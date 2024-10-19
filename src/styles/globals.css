@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Disable text selection for the entire page */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Allow selection for specific elements if needed */
+.allow-select {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* You can add other global styles here */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: #000000;
+}
+
+#__next {
+  min-height: 100vh;
+}
