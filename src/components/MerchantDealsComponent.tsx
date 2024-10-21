@@ -182,7 +182,7 @@ const MerchantDealsComponent: React.FC<MerchantDealsComponentProps> = ({ localWa
       {deals.length > 0 ? (
         <div>
           {deals.map((deal) => (
-            <div key={deal.id} style={{ marginBottom: '1rem', backgroundColor: '#3D261B', borderRadius: '0.5rem', padding: '1rem' }}>
+            <div key={deal.id} style={{ marginBottom: '1rem', backgroundColor: '#000000', borderRadius: '0.5rem', padding: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <img 
                   src={deal.logoAbsoluteUrl || deal.logo} 
