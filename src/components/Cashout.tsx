@@ -167,7 +167,7 @@ const Cashout: React.FC<CashoutProps> = ({ localWallet, aprilTokenAddress, celoA
       </svg>
 
     {/* Add margin here */}
-    <div style={{ marginTop: '6rem' }}>
+    <div style={{ marginTop: '5rem' }}>
       <ButtonSVG
         text={isLoading ? 'Processing...' : `Cashout on ${selectedChain}`}
         onClick={handleCashout}
