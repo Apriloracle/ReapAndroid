@@ -17,6 +17,7 @@ const EarnComponent: React.FC = () => {
     marginBottom: '0.1rem',
   };
 
+  
   const buttonTextStyle = {
     marginLeft: '0.5rem',
     color: 'white',
