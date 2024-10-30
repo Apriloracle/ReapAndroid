@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createStore } from 'tinybase';
 import { createLocalPersister } from 'tinybase/persisters/persister-browser';
+import UserNet from './UserNet';
+import { useSubdocument } from '../contexts/SubdocumentContext';
+import { storeSubdocumentGUID } from '../utils/subdocumentUtils';
 
 interface ProfileComponentProps {
   localWalletAddress: string | null;
@@ -12,6 +15,15 @@ const ProfileComponent: React.FC<ProfileComponentProps> = ({ localWalletAddress,
   const navigate = useNavigate();
   const [userProfile, setUserProfile] = useState<any>(null);
   const [copySuccess, setCopySuccess] = useState<string>('');
+  const [showBackupPopup, setShowBackupPopup] = useState<boolean>(false);
+  const [backupData, setBackupData] = useState({
+    cityOfBirth: '',
+    mothersFirstName: '',
+    email: ''
+  });
+  const { subdocumentGUID, setSubdocumentGUID } = useSubdocument();
+  const [showBackupChoicePopup, setShowBackupChoicePopup] = useState<boolean>(false);
+  const [showImportPopup, setShowImportPopup] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -68,6 +80,184 @@ const ProfileComponent: React.FC<ProfileComponentProps> = ({ localWalletAddress,
     </button>
   );
 
+  const handleBackupSync = () => {
+    setShowBackupChoicePopup(true);
+  };
+
+  const handleBackupChoice = (hasBackup: boolean) => {
+    setShowBackupChoicePopup(false);
+    if (hasBackup) {
+      setShowImportPopup(true);
+    } else {
+      setShowBackupPopup(true);
+    }
+  };
+
+  const handleBackupInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setBackupData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleImportSubmit = async () => {
+    // Use the same logic as handleBackupSubmit to generate GUID
+    const guid = await generateGUID(backupData);
+    console.log('Imported User Subdocument GUID:', guid);
+    setSubdocumentGUID(guid);
+    setShowImportPopup(false);
+    // Clear the form data after import
+    setBackupData({
+      cityOfBirth: '',
+      mothersFirstName: '',
+      email: ''
+    });
+  };
+
+  const generateGUID = async (data: typeof backupData) => {
+    const combinedString = `${data.cityOfBirth}+${data.mothersFirstName}+${data.email}`;
+    const encoder = new TextEncoder();
+    const encodedData = encoder.encode(combinedString);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encodedData);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  const handleBackupSubmit = async () => {
+    const guid = await generateGUID(backupData);
+    console.log('User Subdocument GUID:', guid);
+    setSubdocumentGUID(guid);
+    storeSubdocumentGUID(guid);
+    setShowBackupPopup(false);
+    // Clear the form data after submission
+    setBackupData({
+      cityOfBirth: '',
+      mothersFirstName: '',
+      email: ''
+    });
+  };
+
+  const BackupChoicePopup = () => (
+    <div style={popupOverlayStyle}>
+      <div style={popupContentStyle}>
+        <h3 style={{ color: '#f05e23', marginBottom: '1rem' }}>Backup/Sync</h3>
+        <p style={{ marginBottom: '1rem' }}>Have you backed up previously?</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <button onClick={() => handleBackupChoice(true)} style={buttonStyle}>Yes</button>
+          <button onClick={() => handleBackupChoice(false)} style={buttonStyle}>No</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const ImportPopup = () => (
+    <div style={popupOverlayStyle}>
+      <div style={popupContentStyle}>
+        <h3 style={{ color: '#f05e23', marginBottom: '1rem' }}>Import Backup</h3>
+        <input
+          type="text"
+          name="cityOfBirth"
+          placeholder="City of Birth"
+          value={backupData.cityOfBirth}
+          onChange={handleBackupInputChange}
+          style={inputStyle}
+        />
+        <input
+          type="text"
+          name="mothersFirstName"
+          placeholder="Mother's first name"
+          value={backupData.mothersFirstName}
+          onChange={handleBackupInputChange}
+          style={inputStyle}
+        />
+        <input
+          type="email"
+          name="email"
+          placeholder="E-mail address"
+          value={backupData.email}
+          onChange={handleBackupInputChange}
+          style={inputStyle}
+        />
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>
+          <button onClick={handleImportSubmit} style={{...buttonStyle, backgroundColor: '#f05e23', width: '100%'}}>Import</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const BackupPopup = () => (
+    <div style={popupOverlayStyle}>
+      <div style={popupContentStyle}>
+        <h3 style={{ color: '#f05e23', marginBottom: '1rem' }}>Create Backup</h3>
+        <input
+          type="text"
+          name="cityOfBirth"
+          placeholder="City of Birth"
+          value={backupData.cityOfBirth}
+          onChange={handleBackupInputChange}
+          style={inputStyle}
+        />
+        <input
+          type="text"
+          name="mothersFirstName"
+          placeholder="Mother's first name"
+          value={backupData.mothersFirstName}
+          onChange={handleBackupInputChange}
+          style={inputStyle}
+        />
+        <input
+          type="email"
+          name="email"
+          placeholder="E-mail address"
+          value={backupData.email}
+          onChange={handleBackupInputChange}
+          style={inputStyle}
+        />
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>
+          <button onClick={handleBackupSubmit} style={{...buttonStyle, backgroundColor: '#f05e23', width: '100%'}}>Backup</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const popupOverlayStyle = {
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000
+  };
+
+  const popupContentStyle = {
+    backgroundColor: '#1A202C',
+    padding: '2rem',
+    borderRadius: '8px',
+    width: '80%',
+    maxWidth: '400px'
+  };
+
+  const inputStyle = {
+    width: '100%',
+    padding: '0.5rem',
+    marginBottom: '1rem',
+    backgroundColor: '#2D3748',
+    color: '#FFFFFF',
+    border: 'none',
+    borderRadius: '4px'
+  };
+
+  const buttonStyle = {
+    padding: '0.5rem 1rem',
+    backgroundColor: '#4A5568',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer'
+  };
+
   return (
     <div style={{ padding: '1rem', backgroundColor: '#000000', minHeight: '100vh', color: '#FFFFFF' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
@@ -86,6 +276,22 @@ const ProfileComponent: React.FC<ProfileComponentProps> = ({ localWalletAddress,
           <CopyButton text={localWalletAddress} />
         </div>
       )}
+      <button 
+        onClick={handleBackupSync}
+        style={{
+          backgroundColor: '#4A5568',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          padding: '8px 16px',
+          fontSize: '0.9rem',
+          cursor: 'pointer',
+          marginBottom: '1rem',
+          width: '100%',
+        }}
+      >
+        Backup/Sync
+      </button>
       {address && (
         <div style={{ marginBottom: '1rem', fontSize: '1rem', color: '#A0AEC0', wordBreak: 'break-all' }}>
           <strong>Connected Wallet:</strong> {address}
@@ -116,6 +322,10 @@ const ProfileComponent: React.FC<ProfileComponentProps> = ({ localWalletAddress,
       ) : (
         <p style={{ fontSize: '1rem' }}>Loading user profile...</p>
       )}
+      {showBackupChoicePopup && <BackupChoicePopup />}
+      {showImportPopup && <ImportPopup />}
+      {showBackupPopup && <BackupPopup />}
+      {subdocumentGUID && <UserNet />}
     </div>
   );
 };

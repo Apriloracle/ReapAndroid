@@ -182,4 +182,3 @@ const Cashout: React.FC<CashoutProps> = ({ localWallet, aprilTokenAddress, celoA
 };
 
 export default Cashout;
-

@@ -75,8 +75,8 @@ const BalanceCard: React.FC<BalanceCardProps> = ({ totalBalance, availableApril,
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <div style={{ backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: '8px', padding: '8px', flex: 1, marginRight: '8px' }}>
-          <div style={{ fontSize: '12px' }}>APRIL Balance</div>
+        <div style={{ backgroundColor: '#000000', borderRadius: '8px', padding: '8px', flex: 1, marginRight: '8px' }}>
+          <div style={{ fontSize: '11px' }}>APRIL Balance</div>
           <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{availableApril.display}</div>
         </div>
       </div>

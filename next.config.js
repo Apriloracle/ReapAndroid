@@ -25,4 +25,3 @@ let nextConfig = {
 };
 
 module.exports = nextConfig;
-

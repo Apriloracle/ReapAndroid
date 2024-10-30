@@ -24,6 +24,7 @@ import WatchAdsComponent from './WatchAdsComponent';
 import SurveyList from './SurveyList';
 import ProfileComponent from './ProfileComponent';
 import { Ed25519VerificationKey2020 } from '@digitalbazaar/ed25519-verification-key-2020';
+import { SubdocumentProvider } from '../contexts/SubdocumentContext';
 
 const DAILY_TAP_LIMIT = 9000;
 const RESET_MINUTES = 60;
@@ -69,39 +70,42 @@ const TelegramMiniApp: React.FC = () => {
 
   // Add a new state variable to store the login method
   const [loginMethod, setLoginMethod] = useState<'telegram' | 'peerDID' | null>(null);
+  const [isPeerSyncReady, setIsPeerSyncReady] = useState<boolean>(false);
 
   useEffect(() => {
     const initializeApp = async () => {
-      // Retrieve the stored peer:did
-      const peerDID = await getPeerDID();
+      if (isPeerSyncReady) {
+        // Retrieve the stored peer:did
+        const peerDID = await getPeerDID();
 
-      if (peerDID) {
-        // Create a new Yjs document
-        const yDoc = new Doc();
+        if (peerDID) {
+          // Create a new Yjs document
+          const yDoc = new Doc();
 
-        // Create a new TinyBase store for the peer:did
-        const peerDIDStore = createStore();
-        peerDIDStore.setTable('peerDID', { 'current': { did: peerDID } });
+          // Create a new TinyBase store for the peer:did
+          const peerDIDStore = createStore();
+          peerDIDStore.setTable('peerDID', { 'current': { did: peerDID } });
 
-        // Create a YjsPersister
-        const yjsPersister = createYjsPersister(peerDIDStore, yDoc, 'userSubnet');
+          // Create a YjsPersister
+          const yjsPersister = createYjsPersister(peerDIDStore, yDoc, 'userSubnet');
 
-        // Save the peer:did to the Yjs document
-        await yjsPersister.save();
+          // Save the peer:did to the Yjs document
+          await yjsPersister.save();
 
-        console.log('Peer:DID saved to Yjs document:', peerDID);
-      } else {
-        console.error('No Peer:DID found');
+          console.log('Peer:DID saved to Yjs document:', peerDID);
+        } else {
+          console.error('No Peer:DID found');
+        }
+
+        // Generate simple Peer:DID
+        await generateAndStorePeerDID();
+
+        // ... other initialization code ...
       }
-
-      // Generate simple Peer:DID
-      await generateAndStorePeerDID();
-
-      // ... other initialization code ...
     };
 
     initializeApp();
-  }, []);
+  }, [isPeerSyncReady]);
 
   const generateAndStorePeerDID = async () => {
     try {
@@ -203,7 +207,7 @@ const TelegramMiniApp: React.FC = () => {
     };
   }, [dailyStore, dailyPersister]);
 
-  // Update the handleTransfer function to increment daily taps
+  // Update the handleTransfer function to skip API call
   const handleTransfer = async () => {
     if (isDailyLimitReached) {
       setError("Tap limit reached. Please try again in a few minutes.");
@@ -216,6 +220,8 @@ const TelegramMiniApp: React.FC = () => {
         throw new Error("No wallet connected");
       }
 
+      // Comment out the API call
+      /*
       const response = await fetch('https://us-central1-fourth-buffer-421320.cloudfunctions.net/handleTapProxy', {
         method: 'POST',
         headers: {
@@ -231,24 +237,29 @@ const TelegramMiniApp: React.FC = () => {
       const result = await response.json();
 
       if (result.success) {
-        const currentScore = clickStore.getCell('stats', 'clicks', 'count') as number;
-        const newScore = currentScore + 1;
-        clickStore.setCell('stats', 'clicks', 'count', newScore);
-        
-        const currentDailyTaps = dailyStore.getCell('dailyStats', 'clicks', 'count') as number;
-        const newDailyTaps = currentDailyTaps + 1;
-        dailyStore.setCell('dailyStats', 'clicks', 'count', newDailyTaps);
+      */
+      
+      // Keep the rest of the functionality
+      const currentScore = clickStore.getCell('stats', 'clicks', 'count') as number;
+      const newScore = currentScore + 1;
+      clickStore.setCell('stats', 'clicks', 'count', newScore);
+      
+      const currentDailyTaps = dailyStore.getCell('dailyStats', 'clicks', 'count') as number;
+      const newDailyTaps = currentDailyTaps + 1;
+      dailyStore.setCell('dailyStats', 'clicks', 'count', newDailyTaps);
 
-        setError(null);
-        console.log('Tap processed successfully');
+      setError(null);
+      console.log('Tap processed successfully');
 
-        // Randomly show a survey question (1% chance)
-        if (Math.random() < 0.01) {
-          setShowSurvey(true);
-        }
+      // Randomly show a survey question (1% chance)
+      if (Math.random() < 0.01) {
+        setShowSurvey(true);
+      }
+      /*
       } else {
         throw new Error(result.message || 'Unknown error occurred');
       }
+      */
 
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -644,6 +655,11 @@ const TelegramMiniApp: React.FC = () => {
     setIsConnected(status);
   };
 
+  // Add this new function
+  const handlePeerSyncReady = () => {
+    setIsPeerSyncReady(true);
+  };
+
   const handleSurveyResponse = async (question: string, response: string) => {
     console.log(`Survey question: ${question}`);
     console.log(`Survey response: ${response}`);
@@ -815,7 +831,7 @@ const TelegramMiniApp: React.FC = () => {
 <rect x="7" y="50" width="46" height="18" rx="9" fill="#A4491E"/>
 <path d="M21.048 63.144C20.232 63.144 19.524 62.964 18.924 62.604C18.332 62.236 17.876 61.728 17.556 61.08C17.236 60.424 17.076 59.664 17.076 58.8C17.076 57.936 17.236 57.18 17.556 56.532C17.876 55.876 18.332 55.368 18.924 55.008C19.524 54.64 20.232 54.456 21.048 54.456C22.008 54.456 22.788 54.684 23.388 55.14C23.988 55.596 24.372 56.24 24.54 57.072H23.424C23.296 56.552 23.036 56.136 22.644 55.824C22.252 55.504 21.72 55.344 21.048 55.344C20.456 55.344 19.936 55.484 19.488 55.764C19.048 56.036 18.708 56.432 18.468 56.952C18.228 57.464 18.108 58.08 18.108 58.8C18.108 59.52 18.228 60.14 18.468 60.66C18.708 61.172 19.048 61.568 19.488 61.848C19.936 62.12 20.456 62.256 21.048 62.256C21.72 62.256 22.252 62.104 22.644 61.8C23.036 61.488 23.296 61.076 23.424 60.564H24.54C24.372 61.372 23.988 62.004 23.388 62.46C22.788 62.916 22.008 63.144 21.048 63.144ZM25.9416 63V54.36H26.9496V57.972C27.1496 57.612 27.4296 57.328 27.7896 57.12C28.1576 56.912 28.5576 56.808 28.9896 56.808C29.4536 56.808 29.8576 56.904 30.2016 57.096C30.5456 57.28 30.8096 57.564 30.9936 57.948C31.1776 58.332 31.2696 58.816 31.2696 59.4V63H30.2736V59.508C30.2736 58.9 30.1456 58.444 29.8896 58.14C29.6336 57.828 29.2616 57.672 28.7736 57.672C28.4296 57.672 28.1176 57.756 27.8376 57.924C27.5656 58.092 27.3496 58.332 27.1896 58.644C27.0296 58.956 26.9496 59.34 26.9496 59.796V63H25.9416ZM34.8119 63.144C34.3239 63.144 33.9159 63.06 33.5879 62.892C33.2599 62.716 33.0159 62.488 32.8559 62.208C32.6959 61.92 32.6159 61.608 32.6159 61.272C32.6159 60.864 32.7199 60.52 32.9279 60.24C33.1439 59.952 33.4439 59.736 33.8279 59.592C34.2199 59.44 34.6799 59.364 35.2079 59.364H36.8039C36.8039 58.988 36.7439 58.676 36.6239 58.428C36.5119 58.172 36.3439 57.98 36.1199 57.852C35.9039 57.724 35.6319 57.66 35.3039 57.66C34.9199 57.66 34.5879 57.756 34.3079 57.948C34.0279 58.14 33.8559 58.424 33.7919 58.8H32.7599C32.8079 58.368 32.9519 58.008 33.1919 57.72C33.4399 57.424 33.7519 57.2 34.1279 57.048C34.5039 56.888 34.8959 56.808 35.3039 56.808C35.8639 56.808 36.3279 56.912 36.6959 57.12C37.0719 57.32 37.3519 57.604 37.5359 57.972C37.7199 58.332 37.8119 58.76 37.8119 59.256V63H36.9119L36.8519 61.932C36.7719 62.1 36.6679 62.26 36.5399 62.412C36.4199 62.556 36.2759 62.684 36.1079 62.796C35.9479 62.9 35.7599 62.984 35.5439 63.048C35.3279 63.112 35.0839 63.144 34.8119 63.144ZM34.9679 62.292C35.2479 62.292 35.4999 62.236 35.7239 62.124C35.9559 62.004 36.1519 61.844 36.3119 61.644C36.4719 61.436 36.5919 61.208 36.6719 60.96C36.7599 60.712 36.8039 60.452 36.8039 60.18V60.144H35.2919C34.8999 60.144 34.5839 60.192 34.3439 60.288C34.1039 60.376 33.9319 60.504 33.8279 60.672C33.7239 60.832 33.6719 61.016 33.6719 61.224C33.6719 61.44 33.7199 61.628 33.8159 61.788C33.9199 61.948 34.0679 62.072 34.2599 62.16C34.4599 62.248 34.6959 62.292 34.9679 62.292ZM41.5832 63C41.2232 63 40.9112 62.944 40.6472 62.832C40.3832 62.72 40.1792 62.532 40.0352 62.268C39.8992 61.996 39.8312 61.632 39.8312 61.176V57.804H38.7752V56.952H39.8312L39.9632 55.488H40.8392V56.952H42.5912V57.804H40.8392V61.176C40.8392 61.552 40.9152 61.808 41.0672 61.944C41.2192 62.072 41.4872 62.136 41.8712 62.136H42.5192V63H41.5832Z" fill="#F5F5F5"/>
 <g clip-path="url(#clip0_2305_27879)">
-<path d="M20 29.997C20.0007 27.1469 20.9379 24.376 22.6676 22.1107C24.3972 19.8454 26.8234 18.2113 29.5727 17.4599C32.322 16.7085 35.242 16.8814 37.8834 17.9521C40.5248 19.0227 42.7411 20.9317 44.1913 23.3853C45.6415 25.8389 46.2452 28.7011 45.9095 31.5314C45.5737 34.3616 44.3172 37.0031 42.3332 39.0494C40.3492 41.0956 37.7478 42.4331 34.9292 42.856C32.1106 43.279 29.2312 42.764 26.734 41.3902L21.6796 42.9294C21.4542 42.9981 21.2143 43.0042 20.9856 42.9471C20.757 42.8899 20.5482 42.7717 20.3815 42.6051C20.2149 42.4384 20.0967 42.2296 20.0396 42.001C19.9824 41.7723 19.9885 41.5325 20.0572 41.307L21.5964 36.2448C20.548 34.3293 19.999 32.1806 20 29.997ZM27.8 28.697C27.8 29.0418 27.937 29.3725 28.1808 29.6163C28.4246 29.8601 28.7552 29.997 29.1 29.997H36.9C37.2448 29.997 37.5754 29.8601 37.8192 29.6163C38.063 29.3725 38.2 29.0418 38.2 28.697C38.2 28.3522 38.063 28.0216 37.8192 27.7778C37.5754 27.534 37.2448 27.397 36.9 27.397H29.1C28.7552 27.397 28.4246 27.534 28.1808 27.7778C27.937 28.0216 27.8 28.3522 27.8 28.697ZM29.1 32.597C28.7552 32.597 28.4246 32.734 28.1808 32.9778C27.937 33.2216 27.8 33.5522 27.8 33.897C27.8 34.2418 27.937 34.5725 28.1808 34.8163C28.4246 35.0601 28.7552 35.197 29.1 35.197H34.3C34.6448 35.197 34.9754 35.0601 35.2192 34.8163C35.463 34.5725 35.6 34.2418 35.6 33.897C35.6 33.5522 35.463 33.2216 35.2192 32.9778C34.9754 32.734 34.6448 32.597 34.3 32.597H29.1Z" fill="white"/>
+<path d="M20 29.997C20.0007 27.1469 20.9379 24.376 22.6676 22.1107C24.3972 19.8454 26.8234 18.2113 29.5727 17.4599C32.322 16.7085 35.242 16.8814 37.8834 17.9521C40.5248 19.0227 42.7411 20.9317 44.1913 23.3853C45.6415 25.8389 46.2452 28.7011 45.9095 31.5314C45.5737 34.3616 44.3172 37.0031 42.3332 39.0494C40.3492 41.0956 37.7478 42.4331 34.9292 42.856C32.1106 43.279 29.2312 42.764 26.734 41.3902L21.6796 42.9294C21.4542 42.9981 21.2143 43.0042 20.9856 42.9471C20.757 42.8899 20.5482 42.7717 20.3815 42.6051C20.2149 42.4384 20.0967 42.2296 20.0396 42.001C19.9824 41.7723 19.9885 41.5325 20.0572 41.307L21.5964 36.2448C20.548 34.3293 19.999 32.1806 20 29.997ZM27.8 28.697C27.8 29.0418 27.937 29.3725 28.1808 29.6163C28.4246 29.8601 28.7552 29.997 29.1 29.997H36.9C37.2448 29.997 37.5754 29.8601 37.8192 29.6163C38.063 29.3725 38.2 29.0418 38.2 28.697C38.2 28.3522 38.063 28.0216 37.8192 27.7778C37.5754 27.534 37.2448 27.397 36.9 27.397H29.1C28.7552 27.397 28.4246 27.534 28.1808 27.7778C27.937 28.0216 27.8 28.3522 27.8 28.697ZM29.1 32.597C28.7552 32.597 28.4246 32.734 28.1808 29.6163C28.4246 29.8601 28.7552 29.997 29.1 29.997H36.9C37.2448 29.997 37.5754 29.8601 37.8192 29.6163C38.063 29.3725 38.2 29.0418 38.2 28.697C38.2 28.3522 38.063 28.0216 37.8192 27.7778C37.5754 27.534 37.2448 27.397 36.9 27.397H29.1C28.7552 27.397 28.4246 27.534 28.1808 27.7778C27.937 28.0216 27.8 28.3522 27.8 28.697ZM29.1 32.597C28.7552 32.597 28.4246 32.734 28.1808 32.9778C27.937 33.2216 27.8 33.5522 27.8 33.897C27.8 34.2418 27.937 34.5725 28.1808 34.8163C28.4246 35.0601 28.7552 35.197 29.1 35.197H34.3C34.6448 35.197 34.9754 35.0601 35.2192 34.8163C35.463 34.5725 35.6 34.2418 35.6 33.897C35.6 33.5522 35.463 33.2216 35.2192 32.9778C34.9754 32.734 34.6448 32.597 34.3 32.597H29.1Z" fill="white"/>
 </g>
 <defs>
 <filter id="filter0_d_2305_27879" x="0" y="0" width="67" height="67" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
@@ -1094,6 +1110,7 @@ const TelegramMiniApp: React.FC = () => {
         <InitialDataFetcher />
         <PeerSync 
           onConnectionStatus={handleConnectionStatus}
+          onReady={handlePeerSyncReady}
         />
         
 
