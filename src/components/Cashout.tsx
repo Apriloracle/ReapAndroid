@@ -10,6 +10,7 @@ interface CashoutProps {
   polygonAprilBalance: string;
 }
 
+
 const Cashout: React.FC<CashoutProps> = ({ localWallet, aprilTokenAddress, celoAprilBalance, polygonAprilBalance }) => {
   const [to, setTo] = useState<string>('');
   const [amount, setAmount] = useState<string>('');
