@@ -249,9 +249,9 @@ const UserNet: React.FC<UserNetProps> = ({ onConnectionStatus }) => {
 
   return (
     <div>
-      {/* <h2>Backup & Sync</h2>
+      <h2>Backup & Sync</h2>
       <p>Status: {isConnected ? 'Connected' : 'Disconnected'}</p>
-      {peerDID && <p>Peer:DID: {peerDID}</p>} */}
+      {peerDID && <p>Peer:DID: {peerDID}</p>}
     </div>
   );
 };
