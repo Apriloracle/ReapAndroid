@@ -858,12 +858,14 @@ const TelegramMiniApp: React.FC = () => {
           </div>
 
           {/* Second Icon Placeholder */}
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            cursor: 'pointer'
-          }}>
+          <div 
+            onClick={() => WebApp.openTelegramLink('https://t.me/apriloracle')}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              cursor: 'pointer'
+            }}>
             <div style={{
               width: '60px',
               height: '60px',
