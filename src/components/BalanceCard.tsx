@@ -22,6 +22,11 @@ const BalanceCard: React.FC<BalanceCardProps> = ({ totalBalance, availableApril,
     });
   };
 
+  const formatAprilBalance = (value: string): string => {
+    const number = parseFloat(value);
+    return number.toFixed(2);
+  };
+
   const handleCashoutClick = () => {
     navigate('/cashout');
 
@@ -46,22 +51,25 @@ const BalanceCard: React.FC<BalanceCardProps> = ({ totalBalance, availableApril,
   return (
     <div style={{
       backgroundColor: '#000000',
-      borderRadius: '12px',
+      borderRadius: '10px',
       padding: '16px',
       color: 'white',
-      marginBottom: '20px',
+      marginBottom: '0px',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
         <div>
-          <div style={{ fontSize: '14px', fontWeight: 'bold' }}>Total Balance</div>
-          <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{formatUsdBalance(totalBalance)}</div>
+          <div style={{ fontSize: '14px', fontWeight: '' }}>Total Balance</div>
+          <div style={{ fontSize: '38px', fontWeight: '' }}>{formatUsdBalance(totalBalance)}</div>
         </div>
-
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <div style={{ backgroundColor: '#f05e23', borderRadius: '8px', padding: '8px', flex: 1, marginRight: '8px' }}>
-          <div style={{ fontSize: '11px' }}>APRIL Balance</div>
-          <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{availableApril.display}</div>
+        <div style={{ 
+          backgroundColor: '#202020', 
+          borderRadius: '8px', 
+          padding: '8px',
+          minWidth: '12px'
+        }}>
+          <div style={{ fontSize: '14px', fontWeight: '' }}>
+            {formatAprilBalance(availableApril.value)} <span style={{ fontSize: '12px', color: '#f05e23' }}>APRIL</span>
+          </div>
         </div>
       </div>
     </div>
@@ -69,3 +77,4 @@ const BalanceCard: React.FC<BalanceCardProps> = ({ totalBalance, availableApril,
 };
 
 export default BalanceCard;
+
