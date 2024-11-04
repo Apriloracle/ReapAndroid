@@ -13,9 +13,9 @@ interface UserNetProps {
 }
 
 const WEBSOCKET_URLS = [
-  'ws://34.56.154.231:1234',
-  'ws://34.101.254.24:1234',
-  'ws://34.163.177.138:1234'
+  'wss://ws1.apriloracle.com:1234',
+  'wss://ws2.apriloracle.com:1234',
+  'wss://ws3.apriloracle.com:1234'
 ];
 
 const getRandomWebSocketURL = (): string => {
@@ -249,11 +249,9 @@ const UserNet: React.FC<UserNetProps> = ({ onConnectionStatus }) => {
 
   return (
     <div>
-      {/* <h2>Backup & Sync</h2>
-      <p>Status: {isConnected ? 'Connected' : 'Disconnected'}</p>
-      {peerDID && <p>Peer:DID: {peerDID}</p>} */}
     </div>
   );
 };
 
 export default UserNet;
+
