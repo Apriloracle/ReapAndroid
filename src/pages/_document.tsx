@@ -15,6 +15,7 @@ class MyDocument extends Document {
                 function gtag(){dataLayer.push(arguments);}
                 gtag('js', new Date());
                 gtag('config', 'G-RNVC517N8T');
+                `,
 </script>
         </Head>
         <body>
