@@ -11,6 +11,8 @@ class MyDocument extends Document {
         <body>
           <Main />
           <NextScript />
+           <!-- Include Install Tracking Script -->
+  <script src="/src/install-tracking.js" defer></script>
         </body>
       </Html>
     )
