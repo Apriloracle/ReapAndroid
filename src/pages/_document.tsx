@@ -5,13 +5,12 @@ class MyDocument extends Document {
     return (
       <Html>
         <Head>
-          <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+          <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js" defer></script>
           <link rel="manifest" href="/manifest.json" />
         </Head>
         <body>
           <Main />
           <NextScript />
-           <!-- Include Install Tracking Script -->
   <script src="/src/install-tracking.js" defer></script>
         </body>
       </Html>
