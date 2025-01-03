@@ -1,0 +1,30 @@
+.productCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0rem;
+  padding: 0.1rem;
+  background-color: #000000;
+  border-radius: 1px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border: 1px solid #000000;
+}
+
+.productCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 2px rgba(240, 94, 35, 0.1);
+  border-color: #f05e23;
+}
+
+.productCard:focus {
+  outline: none;
+  border-color: #f05e23;
+  box-shadow: 0 0 0 2px rgba(240, 94, 35, 0.2);
+}
+
+.productCard:active {
+  transform: translateY(0);
+}
+
+/* Add any other styles from your original ProductCard.css */ 

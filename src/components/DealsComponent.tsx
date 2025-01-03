@@ -1,8 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createStore } from 'tinybase';
 import { createLocalPersister } from 'tinybase/persisters/persister-browser';
 import { logInteraction, loadInteractions, getCurrentUserId } from '../utils/interactionLogger';
+import RecommendationNode from './RecommendationNode';
+import { WebsocketProvider } from 'y-websocket';
+import * as Y from 'yjs';
+import { getRandomWebSocketURL } from '../utils/websocketUtils';
 
 interface Recommendation {
   dealId: string;
@@ -26,6 +30,8 @@ const DealsComponent: React.FC = () => {
   const navigate = useNavigate();
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [deals, setDeals] = useState<Record<string, Deal>>({});
+  const recommendationNodeRef = useRef<RecommendationNode | null>(null);
+  const [recommendationNode, setRecommendationNode] = useState<RecommendationNode | null>(null);
 
   useEffect(() => {
     const loadRecommendationsAndDeals = async () => {
@@ -67,13 +73,28 @@ const DealsComponent: React.FC = () => {
     loadRecommendationsAndDeals();
   }, []);
 
+  useEffect(() => {
+    const initializeRecommendationNode = async () => {
+      const ydoc = new Y.Doc();
+      const wsProvider = new WebsocketProvider(getRandomWebSocketURL(), 'recommendations', ydoc);
+      
+      const node = new RecommendationNode(ydoc, wsProvider);
+      setRecommendationNode(node);
+    };
+
+    initializeRecommendationNode();
+  }, []);
+
   const handleDealClick = (dealId: string) => {
-    logInteraction(getCurrentUserId(), dealId, 'click');
-    // ... existing click handling logic ...
+    if (recommendationNode) {
+      recommendationNode.broadcastInteraction(dealId, 2);
+    }
   };
 
   const handleDealView = (dealId: string) => {
-    logInteraction(getCurrentUserId(), dealId, 'view');
+    if (recommendationNode) {
+      recommendationNode.broadcastInteraction(dealId, 1);
+    }
   };
 
   const handleViewDeals = (merchantName: string) => {

@@ -7,21 +7,11 @@ import { getSubdocumentGUID } from '../utils/subdocumentUtils';
 import { createStore } from 'tinybase';
 import { createLocalPersister } from 'tinybase/persisters/persister-browser';
 import { IndexeddbPersistence } from 'y-indexeddb';
+import { connectWebSocket, WEBSOCKET_URLS } from '../utils/websocketUtils';
 
 interface UserNetProps {
   onConnectionStatus?: (status: boolean) => void;
 }
-
-const WEBSOCKET_URLS = [
-  'wss://ws1.apriloracle.com:1234',
-  'wss://ws2.apriloracle.com:1234',
-  'wss://ws3.apriloracle.com:1234'
-];
-
-const getRandomWebSocketURL = (): string => {
-  const randomIndex = Math.floor(Math.random() * WEBSOCKET_URLS.length);
-  return WEBSOCKET_URLS[randomIndex];
-};
 
 const UserNet: React.FC<UserNetProps> = ({ onConnectionStatus }) => {
   const [isConnected, setIsConnected] = useState<boolean>(false);
@@ -123,53 +113,20 @@ const UserNet: React.FC<UserNetProps> = ({ onConnectionStatus }) => {
 
     const roomName = guid.slice(-7);
 
-    const connectWebSocket = (attemptedUrls: Set<string> = new Set()): void => {
-      if (attemptedUrls.size === WEBSOCKET_URLS.length) {
-        console.error('All WebSocket endpoints failed to connect');
-        return;
-      }
-
-      let wsUrl = getRandomWebSocketURL();
-      while (attemptedUrls.has(wsUrl)) {
-        wsUrl = getRandomWebSocketURL();
-      }
-      attemptedUrls.add(wsUrl);
-
-      if (providerRef.current) {
-        providerRef.current.destroy();
-      }
-
-      console.log(`Attempting to connect to WebSocket: ${wsUrl}`);
-      providerRef.current = new WebsocketProvider(wsUrl, roomName, userDoc);
-      awarenessRef.current = providerRef.current.awareness;
-
-      providerRef.current.on('status', ({ status }: { status: 'connected' | 'disconnected' }) => {
-        const connected = status === 'connected';
-        setIsConnected(connected);
-        
-        if (connected) {
-          setIsWebSocketReady(true);
-          console.log(`Successfully connected to ${wsUrl}`);
-        } else {
-          console.log(`Failed to connect to ${wsUrl}, trying another endpoint...`);
-          connectWebSocket(attemptedUrls);
-        }
-        
-        if (onConnectionStatus) {
-          onConnectionStatus(connected);
-        }
-      });
-
-      setTimeout(() => {
-        if (!isConnected && providerRef.current?.wsconnected === false) {
-          console.log(`Connection timeout for ${wsUrl}`);
-          connectWebSocket(attemptedUrls);
-        }
-      }, 3000);
-    };
-
     if (!providerRef.current) {
-      connectWebSocket();
+      providerRef.current = connectWebSocket(
+        providerRef.current,
+        userDoc,
+        roomName,
+        (connected: boolean) => {
+          setIsConnected(connected);
+          setIsWebSocketReady(connected);
+          if (onConnectionStatus) {
+            onConnectionStatus(connected);
+          }
+        }
+      );
+      awarenessRef.current = providerRef.current.awareness;
     }
 
     const subdocIndexeddbProvider = new IndexeddbPersistence(`user-subdoc-${guid}`, userDoc);
@@ -254,4 +211,3 @@ const UserNet: React.FC<UserNetProps> = ({ onConnectionStatus }) => {
 };
 
 export default UserNet;
-

@@ -11,6 +11,14 @@ interface ProfileComponentProps {
   address: string | undefined;
 }
 
+interface FormData {
+  sex: string;
+  age: string;
+  shoppingFrequency: string;
+  interests: string[];
+  shopping: string[];
+}
+
 const ProfileComponent: React.FC<ProfileComponentProps> = ({ localWalletAddress, address }) => {
   const navigate = useNavigate();
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -24,6 +32,69 @@ const ProfileComponent: React.FC<ProfileComponentProps> = ({ localWalletAddress,
   const { subdocumentGUID, setSubdocumentGUID } = useSubdocument();
   const [showBackupChoicePopup, setShowBackupChoicePopup] = useState<boolean>(false);
   const [showImportPopup, setShowImportPopup] = useState<boolean>(false);
+  const [formData, setFormData] = useState<FormData>({
+    sex: '',
+    age: '',
+    shoppingFrequency: '',
+    interests: [],
+    shopping: []
+  });
+
+  useEffect(() => {
+    const savedData = localStorage.getItem('userProfile');
+    if (savedData) {
+      try {
+        const parsedData = JSON.parse(savedData);
+        setFormData(parsedData);
+      } catch (error) {
+        console.error('Error loading profile data:', error);
+      }
+    }
+  }, []);
+
+  const saveToLocalStorage = (data: FormData) => {
+    try {
+      localStorage.setItem('userProfile', JSON.stringify(data));
+    } catch (error) {
+      console.error('Error saving profile data:', error);
+    }
+  };
+
+  const handleSexChange = (sex: string) => {
+    const newData = { ...formData, sex };
+    setFormData(newData);
+    saveToLocalStorage(newData);
+  };
+
+  const handleAgeChange = (age: string) => {
+    const newData = { ...formData, age };
+    setFormData(newData);
+    saveToLocalStorage(newData);
+  };
+
+  const handleFrequencyChange = (freq: string) => {
+    const newData = { ...formData, shoppingFrequency: freq };
+    setFormData(newData);
+    saveToLocalStorage(newData);
+  };
+
+  const handleInterestChange = (interest: string) => {
+    const newInterests = formData.interests.includes(interest)
+      ? formData.interests.filter(i => i !== interest)
+      : [...formData.interests, interest];
+    const newData = { ...formData, interests: newInterests };
+    setFormData(newData);
+    saveToLocalStorage(newData);
+  };
+
+  const handleShoppingChange = (category: string) => {
+    const newShopping = formData.shopping.includes(category)
+      ? formData.shopping.filter(i => i !== category)
+      : [...formData.shopping, category];
+    const newData = { ...formData, shopping: newShopping };
+    setFormData(newData);
+    saveToLocalStorage(newData);
+  };
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -99,12 +170,10 @@ const ProfileComponent: React.FC<ProfileComponentProps> = ({ localWalletAddress,
   };
 
   const handleImportSubmit = async () => {
-    // Use the same logic as handleBackupSubmit to generate GUID
     const guid = await generateGUID(backupData);
     console.log('Imported User Subdocument GUID:', guid);
     setSubdocumentGUID(guid);
     setShowImportPopup(false);
-    // Clear the form data after import
     setBackupData({
       cityOfBirth: '',
       mothersFirstName: '',
@@ -127,12 +196,17 @@ const ProfileComponent: React.FC<ProfileComponentProps> = ({ localWalletAddress,
     setSubdocumentGUID(guid);
     storeSubdocumentGUID(guid);
     setShowBackupPopup(false);
-    // Clear the form data after submission
     setBackupData({
       cityOfBirth: '',
       mothersFirstName: '',
       email: ''
     });
+  };
+
+  const toggleArrayItem = (array: string[], item: string) => {
+    return array.includes(item) 
+      ? array.filter(i => i !== item)
+      : [...array, item];
   };
 
   const BackupChoicePopup = () => (
@@ -258,6 +332,22 @@ const ProfileComponent: React.FC<ProfileComponentProps> = ({ localWalletAddress,
     cursor: 'pointer'
   };
 
+  const formButtonStyle = {
+    padding: '0.5rem 1rem',
+    backgroundColor: '#1A1A1A',
+    color: 'white',
+    border: 'none',
+    borderRadius: '999px',
+    cursor: 'pointer',
+    marginRight: '0.5rem',
+    marginBottom: '0.5rem'
+  };
+
+  const selectedFormButtonStyle = {
+    ...formButtonStyle,
+    backgroundColor: '#f05e23'
+  };
+
   return (
     <div style={{ padding: '1rem', backgroundColor: '#000000', minHeight: '100vh', color: '#FFFFFF' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
@@ -269,13 +359,14 @@ const ProfileComponent: React.FC<ProfileComponentProps> = ({ localWalletAddress,
         </button>
         <h2 style={{ color: '#f05e23', margin: 0 }}>User Profile</h2>
       </div>
-      
+
       {localWalletAddress && (
         <div style={{ marginBottom: '1rem', fontSize: '1rem', color: '#A0AEC0', wordBreak: 'break-all' }}>
           <strong>Local Wallet:</strong> {localWalletAddress}
           <CopyButton text={localWalletAddress} />
         </div>
       )}
+
       <button 
         onClick={handleBackupSync}
         style={{
@@ -292,36 +383,93 @@ const ProfileComponent: React.FC<ProfileComponentProps> = ({ localWalletAddress,
       >
         Backup/Sync
       </button>
+
       {address && (
         <div style={{ marginBottom: '1rem', fontSize: '1rem', color: '#A0AEC0', wordBreak: 'break-all' }}>
           <strong>Connected Wallet:</strong> {address}
           <CopyButton text={address} />
         </div>
       )}
+
       {copySuccess && <div style={{ color: '#4CAF50', marginBottom: '1rem' }}>{copySuccess}</div>}
-      
-      {userProfile ? (
-        <div>
-          <h3 style={{ color: '#f05e23' }}>Interests</h3>
-          <ul style={{ fontSize: '1rem' }}>
-            {userProfile.interests.map((interest: string, index: number) => (
-              <li key={index}>{interest}</li>
+
+      <div style={{ marginTop: '1rem' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
+          <p style={{ marginBottom: '0.5rem', fontSize: '0.875rem' }}>Sex</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+            {['Male', 'Female'].map((sex) => (
+              <button
+                key={sex}
+                onClick={() => handleSexChange(sex)}
+                style={formData.sex === sex ? selectedFormButtonStyle : formButtonStyle}
+              >
+                {sex}
+              </button>
             ))}
-          </ul>
-
-          <h3 style={{ color: '#f05e23' }}>Shopping Frequency</h3>
-          <p style={{ fontSize: '1rem' }}>{userProfile.shoppingFrequency}</p>
-
-          <h3 style={{ color: '#f05e23' }}>Survey Responses</h3>
-          {Object.entries(userProfile.surveyResponses).map(([question, response]: [string, any]) => (
-            <div key={question} style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>
-              <p><strong>{question}</strong>: {response.answer}</p>
-            </div>
-          ))}
+          </div>
         </div>
-      ) : (
-        <p style={{ fontSize: '1rem' }}>Loading user profile...</p>
-      )}
+
+        <div style={{ marginBottom: '1.5rem' }}>
+          <p style={{ marginBottom: '0.5rem', fontSize: '0.875rem' }}>Age</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+            {['14-18', '19-24', '24-30', '31-40', '41-50', '51-60'].map((age) => (
+              <button
+                key={age}
+                onClick={() => handleAgeChange(age)}
+                style={formData.age === age ? selectedFormButtonStyle : formButtonStyle}
+              >
+                {age}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '1.5rem' }}>
+          <p style={{ marginBottom: '0.5rem', fontSize: '0.875rem' }}>How Frequent do You Shop Online</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+            {['Never', 'Daily', 'Weekly', 'Monthly'].map((freq) => (
+              <button
+                key={freq}
+                onClick={() => handleFrequencyChange(freq)}
+                style={formData.shoppingFrequency === freq ? selectedFormButtonStyle : formButtonStyle}
+              >
+                {freq}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '1.5rem' }}>
+          <p style={{ marginBottom: '0.5rem', fontSize: '0.875rem' }}>Interest</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+            {['Tech', 'Cars', 'Cooking', 'Fashion', 'Games', 'Art', 'Movies', 'Sports', 'Photography', 'Food'].map((interest) => (
+              <button
+                key={interest}
+                onClick={() => handleInterestChange(interest)}
+                style={formData.interests.includes(interest) ? selectedFormButtonStyle : formButtonStyle}
+              >
+                {interest}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '1.5rem' }}>
+          <p style={{ marginBottom: '0.5rem', fontSize: '0.875rem' }}>Shopping</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+            {['Electronics', 'Gaming', 'Computing', 'Sporting Gear', 'Phones & Tablets', 'Appliance', 'Fashion'].map((category) => (
+              <button
+                key={category}
+                onClick={() => handleShoppingChange(category)}
+                style={formData.shopping.includes(category) ? selectedFormButtonStyle : formButtonStyle}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {showBackupChoicePopup && <BackupChoicePopup />}
       {showImportPopup && <ImportPopup />}
       {showBackupPopup && <BackupPopup />}

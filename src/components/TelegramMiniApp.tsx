@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef, useContext, useMemo } from 'react'
 import { ConnectKitButton } from 'connectkit';
 import { useAccount } from 'wagmi'
 import { createStore } from 'tinybase';
@@ -26,6 +26,17 @@ import ProfileComponent from './ProfileComponent';
 import { Ed25519VerificationKey2020 } from '@digitalbazaar/ed25519-verification-key-2020';
 import { SubdocumentProvider } from '../contexts/SubdocumentContext';
 import TapComponent from './TapComponent';
+import BrainInitializer from './BrainInitializer';
+import RecommendationNode from './RecommendationNode';
+import { WebsocketProvider } from 'y-websocket';
+import * as Y from 'yjs';
+import { getRandomWebSocketURL } from '../utils/websocketUtils';
+import HybridClusteringEngine from './HybridClusteringEngine';
+import styles from '../styles/ProductCard.module.css';
+import { WebSocketProvider, useWebSocket } from '../contexts/WebSocketContext';
+import { merchantProductsStore } from '../stores/MerchantProductsStore';
+import SwiperComponent from './SwiperComponent'; // Import the new component
+import ButtonSwipe from './ButtonSwipe'; 
 
 
 const DAILY_TAP_LIMIT = 9000;
@@ -34,6 +45,207 @@ const TELEGRAM_BOT_URL = 'https://t.me/Reapmini_bot';
 const SHARE_URL = 'https://t.me/share/url?url=https://t.me/Reapmini_bot&text=%F0%9F%92%B0Reap%20Mini%3A%20Tap%2C%20Earn%2C%20Grow%20-%20Where%20Every%20Tap%20Leads%20to%20Crypto%20Rewards!%0A%F0%9F%8E%81Let%27s%20start%20earning%20now!';
 
 const DEFAULT_APRIL_PRICE = 0; // Updated default price to 0
+
+// Move MainPage component outside of TelegramMiniApp
+interface MainPageProps {
+  totalBalanceUsd: number;
+  aprilBalance: {
+    value: string;
+    displayValue: string;
+    display: string;
+  };
+  localWalletAddress: string | null;
+  address: string | undefined;
+  showSurvey: boolean;
+  handleSurveyResponse: (question: string, response: string) => void;
+  setShowSurvey: (show: boolean) => void;
+  ydoc: Y.Doc | null;
+}
+
+const MainPage: React.FC<MainPageProps> = ({
+  totalBalanceUsd,
+  aprilBalance,
+  localWalletAddress,
+  address,
+  showSurvey,
+  handleSurveyResponse,
+  setShowSurvey,
+  ydoc
+}) => {
+  const navigate = useNavigate();
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [merchantProducts, setMerchantProducts] = useState<Record<string, any>>({});
+  const { provider } = useWebSocket();
+  
+  const clusteringEngine = useRef<any>(null);
+  const [wsProvider, setWsProvider] = useState<WebsocketProvider | null>(null);
+
+   // State for current deal index - Now managed inside MainPage
+  const [currentDealIndex, setCurrentDealIndex] = useState(0);
+
+  // Initialize WebSocket provider and clustering engine
+  useEffect(() => {
+    if (provider?.awareness && ydoc) {
+      clusteringEngine.current = new HybridClusteringEngine(provider.awareness, ydoc);
+    }
+  }, [provider, ydoc]);
+
+  // Initialize the store
+  useEffect(() => {
+    merchantProductsStore.initialize();
+  }, []);
+
+  // Modified fetchProductsForMerchants
+  useEffect(() => {
+    const fetchProductsForMerchants = async () => {
+      const merchantNames = recommendations
+        .map(deal => deal.merchantName)
+        .filter(name => name && !merchantProducts[name]);
+
+      for (const merchantName of merchantNames) {
+        try {
+          const products = await merchantProductsStore.getProducts(merchantName);
+          setMerchantProducts(prev => ({
+            ...prev,
+            [merchantName]: products
+          }));
+        } catch (error) {
+          console.error(`Error fetching products for ${merchantName}:`, error);
+        }
+      }
+    };
+
+    if (recommendations.length > 0) {
+      fetchProductsForMerchants();
+    }
+  }, [recommendations]);
+
+  useEffect(() => {
+    const loadRecommendations = async () => {
+      try {
+        // Load directly from 'kindred-deals' store
+        const dealsStore = createStore();
+        const dealsPersister = createLocalPersister(dealsStore, 'kindred-deals');
+        await dealsPersister.load();
+
+        const dealsTable = dealsStore.getTable('deals');
+        if (dealsTable) {
+          // No need for sorting or slicing, just load all deals
+          const deals = Object.values(dealsTable);
+          setRecommendations(deals);
+        }
+      } catch (error) {
+        console.error('Error loading recommendations:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadRecommendations();
+  }, []);
+
+  // Add this new state for tracking image loading
+  const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
+
+  // Add this function to handle image loading
+  const handleImageLoad = (imageUrl: string) => {
+    setLoadedImages(prev => ({
+      ...prev,
+      [imageUrl]: true
+    }));
+  };
+
+  // Update handleProductInteraction
+  const handleProductInteraction = async (product: any, merchantName: string, interactionType: 'click' | 'view') => {
+    try {
+      // Validate product has ASIN
+      if (!product || !product.asin) {
+        console.warn('Invalid product data:', product);
+        return;
+      }
+
+      // Initialize clustering engine if needed
+      if (!clusteringEngine.current) {
+        if (wsProvider?.awareness && ydoc) {
+          clusteringEngine.current = new HybridClusteringEngine(wsProvider.awareness, ydoc);
+        } else {
+          console.warn('WebSocket provider, awareness, or ydoc not available');
+          return;
+        }
+      }
+
+      // Format interaction data for clustering
+      const interaction = {
+        ASIN: product.asin,
+        InteractionLevel: interactionType === 'click' ? 1 : 0.5,
+        InteractionCount: 1,
+        timestamp: Date.now(),
+        merchantName,
+        category: product.category || 'unknown',
+        price: product.price || 0
+      };
+
+      // Process through clustering engine
+      await clusteringEngine.current.processInteraction(interaction);
+
+    } catch (error) {
+      console.error('Error handling product interaction:', error);
+    }
+  };
+
+  return (
+    <>
+      <BalanceCard
+        totalBalance={totalBalanceUsd}
+        availableApril={aprilBalance}
+        localWalletAddress={localWalletAddress}
+      />
+      
+      {!localWalletAddress && !address && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
+          <ConnectKitButton theme="retro" customTheme={{
+            "--ck-connectbutton-background": "black",
+            "--ck-connectbutton-color": "#f05e23",
+          }} />
+        </div>
+      )}
+
+
+ {/* New Icon Placeholders Section */}
+ 
+
+
+         {/* Deals Display Section - Now using SwiperComponent */}
+         <SwiperComponent 
+          recommendations={recommendations}
+          currentDealIndex={currentDealIndex}
+          setCurrentDealIndex={setCurrentDealIndex}
+          isLoading={isLoading}
+      />
+
+            {/* ButtonSwipe Component Added Below Swiper */}
+            <ButtonSwipe
+  currentDealIndex={currentDealIndex}
+  onReject={() => setCurrentDealIndex(prevIndex => prevIndex + 1)}
+  onAccept={(deal) => {
+    // You can directly call the deal activation logic here if needed
+    // or just rely on the handleAccept inside ButtonSwipe 
+  }}
+  deal={recommendations[currentDealIndex]}
+  localWalletAddress={localWalletAddress} // Pass localWalletAddress
+  address={address} // Pass address
+/>
+
+      {showSurvey && (
+        <SurveyQuestion
+          onResponse={handleSurveyResponse}
+          onClose={() => setShowSurvey(false)}
+        />
+      )}
+    </>
+  );
+};
 
 const TelegramMiniApp: React.FC = () => {
   const [webApp, setWebApp] = useState<any>(null);
@@ -50,7 +262,15 @@ const TelegramMiniApp: React.FC = () => {
   const [localWalletAddress, setLocalWalletAddress] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [showSurvey, setShowSurvey] = useState<boolean>(false);
-  const [aprilBalance, setAprilBalance] = useState<{ value: string; displayValue: string }>({ value: '0', displayValue: '0' });
+  const [aprilBalance, setAprilBalance] = useState<{ 
+    value: string; 
+    displayValue: string;
+    display: string;
+  }>({ 
+    value: '0', 
+    displayValue: '0',
+    display: '0'
+  });
   const [aprilUsdPrice, setAprilUsdPrice] = useState<number | null>(null);
   const [totalBalanceUsd, setTotalBalanceUsd] = useState<number>(0);
 
@@ -73,6 +293,110 @@ const TelegramMiniApp: React.FC = () => {
   // Add a new state variable to store the login method
   const [loginMethod, setLoginMethod] = useState<'telegram' | 'peerDID' | null>(null);
   const [isPeerSyncReady, setIsPeerSyncReady] = useState<boolean>(false);
+
+  // Add new state for product details
+  const [merchantProducts, setMerchantProducts] = useState<Record<string, any>>({});
+
+  // Add function to fetch product details
+  const fetchMerchantProducts = async (merchantName: string) => {
+    try {
+      const response = await fetch(`https://asia-southeast1-fourth-buffer-421320.cloudfunctions.net/getProductsByMerchant?merchantName=${merchantName}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch merchant products');
+      }
+
+      const data = await response.json();
+      
+      const amazonProductStore = createStore();
+      const amazonProductPersister = createLocalPersister(amazonProductStore, `amazon-products-${merchantName}`);
+
+      const productsTable: Record<string, Record<string, any>> = {};
+      const merchantMetaTable: Record<string, Record<string, any>> = {};
+
+      // Store merchant metadata
+      merchantMetaTable[merchantName] = {
+        product_count: data.product_count,
+        search_type: data.search_type
+      };
+
+      // Store individual products
+      data.products.forEach((product: any) => {
+        productsTable[product.asin] = {
+          title: product.title,
+          image_url: product.image_url,
+          product_url: product.product_url,
+          stars: product.stars,
+          reviews: product.reviews,
+          price: product.price,
+          list_price: product.list_price,
+          category_id: product.category_id,
+          is_bestseller: product.is_bestseller,
+          bought_in_last_month: product.bought_in_last_month
+        };
+      });
+
+      amazonProductStore.setTable('products', productsTable);
+      amazonProductStore.setTable('merchant_meta', merchantMetaTable);
+      
+      await amazonProductPersister.save();
+
+      setMerchantProducts(prev => ({
+        ...prev,
+        [merchantName]: data.products
+      }));
+
+    } catch (error) {
+      console.error(`Error fetching products for ${merchantName}:`, error);
+    }
+  };
+
+  // Add RecommendationNode instance
+  const [recommendationNode, setRecommendationNode] = useState<RecommendationNode | null>(null);
+
+  // Add state for websocket provider
+  const [wsProvider, setWsProvider] = useState<WebsocketProvider | null>(null);
+
+  useEffect(() => {
+    const initializeRecommendationNode = async () => {
+      const ydoc = new Y.Doc();
+      const provider = new WebsocketProvider(getRandomWebSocketURL(), '', ydoc);
+      setWsProvider(provider);
+      
+      const node = new RecommendationNode(ydoc, provider);
+      setRecommendationNode(node);
+    };
+
+    initializeRecommendationNode();
+  }, []);
+
+  // Modify loadRecommendations to use the awareness protocol
+  const loadRecommendations = async () => {
+    if (!recommendationNode || !wsProvider) return;
+    
+    try {
+      const dealsStore = createStore();
+      const dealsPersister = createLocalPersister(dealsStore, 'kindred-deals');
+      await dealsPersister.load();
+
+      const dealsTable = dealsStore.getTable('deals');
+      if (dealsTable) {
+        Object.values(dealsTable).forEach(deal => {
+          recommendationNode.broadcastInteraction(
+            String(deal.dealId),
+            1  // default interaction level
+          );
+        });
+      }
+    } catch (error) {
+      console.error('Error loading recommendations:', error);
+    }
+  };
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -353,7 +677,7 @@ const TelegramMiniApp: React.FC = () => {
     aprilBalancePersister.load().then(() => {
       const loadedValue = aprilBalanceStore.getCell('balance', 'april', 'value') as string;
       const loadedDisplayValue = aprilBalanceStore.getCell('balance', 'april', 'displayValue') as string;
-      setAprilBalance({ value: loadedValue || '0', displayValue: loadedDisplayValue || '0' });
+      setAprilBalance({ value: loadedValue || '0', displayValue: loadedDisplayValue || '0', display: loadedDisplayValue || '0' });
     }).catch(console.error);
 
     // Set up APRIL balance listener
@@ -363,7 +687,7 @@ const TelegramMiniApp: React.FC = () => {
       'value',
       (_, __, ___, ____, newValue) => {
         const newDisplayValue = aprilBalanceStore.getCell('balance', 'april', 'displayValue') as string;
-        setAprilBalance({ value: newValue as string, displayValue: newDisplayValue });
+        setAprilBalance({ value: newValue as string, displayValue: newDisplayValue, display: newDisplayValue });
         console.log('APRIL balance updated:', newValue);
         aprilBalancePersister.save().catch(console.error);
       }
@@ -400,7 +724,8 @@ const TelegramMiniApp: React.FC = () => {
           // Update the state with the total balance
           setAprilBalance({ 
             value: (chain42220Value + chain137Value).toString(),
-            displayValue: totalDisplayValue.toFixed(18) // Keep 18 decimal places for consistency
+            displayValue: totalDisplayValue.toFixed(18),
+            display: totalDisplayValue.toFixed(18)
           });
 
           // Update the store with the total balance
@@ -727,269 +1052,6 @@ const TelegramMiniApp: React.FC = () => {
     }
   };
 
-  const MainPage: React.FC = () => {
-    const navigate = useNavigate();
-    const [recommendations, setRecommendations] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-
-    useEffect(() => {
-      const loadRecommendations = async () => {
-        try {
-          const dealsStore = createStore();
-          const dealsPersister = createLocalPersister(dealsStore, 'kindred-deals');
-          await dealsPersister.load();
-
-          const dealsTable = dealsStore.getTable('deals');
-          if (dealsTable) {
-            const deals = Object.values(dealsTable).slice(0, 3);
-            setRecommendations(deals);
-          }
-        } catch (error) {
-          console.error('Error loading recommendations:', error);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      loadRecommendations();
-    }, []);
-
-    return (
-      <>
-        {/* Existing BalanceCard and ConnectKitButton */}
-        <BalanceCard
-          totalBalance={totalBalanceUsd}
-          availableApril={{
-            value: aprilBalance.value,
-            display: aprilBalance.displayValue
-          }}
-          localWalletAddress={localWalletAddress}
-        />
-        
-        {!localWalletAddress && !address && (
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
-            <ConnectKitButton theme="retro" customTheme={{
-              "--ck-connectbutton-background": "black",
-              "--ck-connectbutton-color": "#f05e23",
-            }} />
-          </div>
-        )}
-
-        {/* New Icon Placeholders Section */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-around', 
-          marginBottom: '1.5rem',
-          padding: '0 1rem'
-        }}>
-          {/* New Icon - Swap */}
-          <div 
-    onClick={() => {
-      navigate('/cashout');
-      // Call the feeProxy endpoint in the background
-      if (localWalletAddress) {
-        fetch('https://asia-southeast1-fourth-buffer-421320.cloudfunctions.net/feeProxy', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ address: localWalletAddress }),
-        }).catch(error => console.error('Error calling feeProxy:', error));
-      } else {
-        console.error('Local wallet address not available');
-      }
-    }}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{
-              width: '60px',
-              height: '60px',
-              backgroundColor: '#000000',
-              borderRadius: '12px',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: '0.0rem'
-            }}>
-              <svg width="51" height="69" viewBox="0 0 51 69" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect x="1" y="0.5" width="49" height="49" rx="24.5" fill="#f05e23"/>
-<rect x="1" y="0.5" width="49" height="49" rx="24.5" stroke="#363636"/>
-<path d="M30.75 21.3962V20.874C30.75 18.5228 27.2034 16.749 22.5 16.749C17.7966 16.749 14.25 18.5228 14.25 20.874V24.624C14.25 26.5825 16.7109 28.1387 20.25 28.6046V29.124C20.25 31.4753 23.7966 33.249 28.5 33.249C33.2034 33.249 36.75 31.4753 36.75 29.124V25.374C36.75 23.4334 34.3669 21.8753 30.75 21.3962ZM18.75 26.7681C16.9134 26.2553 15.75 25.4106 15.75 24.624V23.305C16.515 23.8468 17.5397 24.2837 18.75 24.5771V26.7681ZM26.25 24.5771C27.4603 24.2837 28.485 23.8468 29.25 23.305V24.624C29.25 25.4106 28.0866 26.2553 26.25 26.7681V24.5771ZM24.75 31.2681C22.9134 30.7553 21.75 29.9106 21.75 29.124V28.7331C21.9966 28.7425 22.2459 28.749 22.5 28.749C22.8638 28.749 23.2191 28.7368 23.5678 28.7162C23.9552 28.8549 24.3499 28.9726 24.75 29.0687V31.2681ZM24.75 27.085C24.0051 27.195 23.253 27.2498 22.5 27.249C21.747 27.2498 20.9949 27.195 20.25 27.085V24.8546C20.996 24.9519 21.7477 25.0001 22.5 24.999C23.2523 25.0001 24.004 24.9519 24.75 24.8546V27.085ZM30.75 31.585C29.258 31.8037 27.742 31.8037 26.25 31.585V29.349C26.9958 29.4493 27.7475 29.4994 28.5 29.499C29.2523 29.5001 30.004 29.4519 30.75 29.3546V31.585ZM35.25 29.124C35.25 29.9106 34.0866 30.7553 32.25 31.2681V29.0771C33.4603 28.7837 34.485 28.3468 35.25 27.805V29.124Z" fill="#EAEAEA"/>
-<path d="M6.24164 64.144C5.41764 64.144 4.70564 63.964 4.10564 63.604C3.51364 63.236 3.05364 62.728 2.72564 62.08C2.40564 61.424 2.24564 60.664 2.24564 59.8C2.24564 58.944 2.40564 58.188 2.72564 57.532C3.05364 56.876 3.51364 56.368 4.10564 56.008C4.70564 55.64 5.41764 55.456 6.24164 55.456C7.22564 55.456 8.02164 55.692 8.62964 56.164C9.24564 56.636 9.63764 57.3 9.80564 58.156H8.48564C8.36564 57.66 8.11764 57.264 7.74164 56.968C7.37364 56.672 6.87364 56.524 6.24164 56.524C5.67364 56.524 5.18164 56.656 4.76564 56.92C4.34964 57.184 4.02964 57.56 3.80564 58.048C3.58164 58.536 3.46964 59.12 3.46964 59.8C3.46964 60.48 3.58164 61.068 3.80564 61.564C4.02964 62.052 4.34964 62.428 4.76564 62.692C5.18164 62.948 5.67364 63.076 6.24164 63.076C6.87364 63.076 7.37364 62.936 7.74164 62.656C8.11764 62.368 8.36564 61.98 8.48564 61.492H9.80564C9.63764 62.324 9.24564 62.976 8.62964 63.448C8.02164 63.912 7.22564 64.144 6.24164 64.144ZM13.1852 64.144C12.6892 64.144 12.2772 64.06 11.9492 63.892C11.6212 63.724 11.3772 63.5 11.2172 63.22C11.0572 62.932 10.9772 62.624 10.9772 62.296C10.9772 61.896 11.0812 61.556 11.2892 61.276C11.4972 60.988 11.7932 60.768 12.1772 60.616C12.5612 60.464 13.0212 60.388 13.5572 60.388H15.1292C15.1292 60.036 15.0772 59.744 14.9732 59.512C14.8692 59.28 14.7132 59.108 14.5052 58.996C14.3052 58.876 14.0492 58.816 13.7372 58.816C13.3772 58.816 13.0692 58.904 12.8132 59.08C12.5572 59.248 12.3972 59.5 12.3332 59.836H11.1332C11.1812 59.412 11.3252 59.052 11.5652 58.756C11.8132 58.452 12.1292 58.22 12.5132 58.06C12.8972 57.892 13.3052 57.808 13.7372 57.808C14.3052 57.808 14.7812 57.908 15.1652 58.108C15.5492 58.308 15.8372 58.592 16.0292 58.96C16.2292 59.32 16.3292 59.752 16.3292 60.256V64H15.2852L15.1892 62.98C15.1012 63.14 14.9972 63.292 14.8772 63.436C14.7572 63.58 14.6132 63.704 14.4452 63.808C14.2852 63.912 14.0972 63.992 13.8812 64.048C13.6732 64.112 13.4412 64.144 13.1852 64.144ZM13.4132 63.172C13.6692 63.172 13.9012 63.12 14.1092 63.016C14.3172 62.912 14.4932 62.772 14.6372 62.596C14.7892 62.412 14.9012 62.208 14.9732 61.984C15.0532 61.752 15.0972 61.516 15.1052 61.276V61.24H13.6772C13.3332 61.24 13.0532 61.284 12.8372 61.372C12.6292 61.452 12.4772 61.564 12.3812 61.708C12.2852 61.852 12.2372 62.02 12.2372 62.212C12.2372 62.412 12.2812 62.584 12.3692 62.728C12.4652 62.864 12.6012 62.972 12.7772 63.052C12.9532 63.132 13.1652 63.172 13.4132 63.172ZM20.2009 64.144C19.6889 64.144 19.2409 64.06 18.8569 63.892C18.4729 63.724 18.1689 63.488 17.9449 63.184C17.7209 62.88 17.5849 62.524 17.5369 62.116H18.7609C18.8009 62.308 18.8769 62.484 18.9889 62.644C19.1089 62.804 19.2689 62.932 19.4689 63.028C19.6769 63.124 19.9209 63.172 20.2009 63.172C20.4649 63.172 20.6809 63.136 20.8489 63.064C21.0249 62.984 21.1529 62.88 21.2329 62.752C21.3129 62.616 21.3529 62.472 21.3529 62.32C21.3529 62.096 21.2969 61.928 21.1849 61.816C21.0809 61.696 20.9209 61.604 20.7049 61.54C20.4969 61.468 20.2449 61.404 19.9489 61.348C19.6689 61.3 19.3969 61.236 19.1329 61.156C18.8769 61.068 18.6449 60.96 18.4369 60.832C18.2369 60.704 18.0769 60.544 17.9569 60.352C17.8369 60.152 17.7769 59.908 17.7769 59.62C17.7769 59.276 17.8689 58.968 18.0529 58.696C18.2369 58.416 18.4969 58.2 18.8329 58.048C19.1769 57.888 19.5809 57.808 20.0449 57.808C20.7169 57.808 21.2569 57.968 21.6649 58.288C22.0729 58.608 22.3129 59.06 22.3849 59.644H21.2209C21.1889 59.372 21.0689 59.164 20.8609 59.02C20.6529 58.868 20.3769 58.792 20.0329 58.792C19.6889 58.792 19.4249 58.86 19.2409 58.996C19.0569 59.132 18.9649 59.312 18.9649 59.536C18.9649 59.68 19.0169 59.808 19.1209 59.92C19.2249 60.032 19.3769 60.128 19.5769 60.208C19.7849 60.28 20.0369 60.348 20.3329 60.412C20.7569 60.492 21.1369 60.592 21.4729 60.712C21.8089 60.832 22.0769 61.008 22.2769 61.24C22.4769 61.472 22.5769 61.804 22.5769 62.236C22.5849 62.612 22.4889 62.944 22.2889 63.232C22.0969 63.52 21.8209 63.744 21.4609 63.904C21.1089 64.064 20.6889 64.144 20.2009 64.144ZM23.9898 64V55.36H25.1898V58.936C25.3898 58.584 25.6658 58.308 26.0178 58.108C26.3778 57.908 26.7738 57.808 27.2058 57.808C27.6858 57.808 28.0978 57.908 28.4418 58.108C28.7858 58.3 29.0498 58.592 29.2338 58.984C29.4178 59.368 29.5098 59.852 29.5098 60.436V64H28.3218V60.568C28.3218 60 28.2018 59.572 27.9618 59.284C27.7218 58.988 27.3658 58.84 26.8938 58.84C26.5738 58.84 26.2858 58.916 26.0298 59.068C25.7738 59.22 25.5698 59.444 25.4178 59.74C25.2658 60.028 25.1898 60.38 25.1898 60.796V64H23.9898ZM33.8045 64.144C33.2365 64.144 32.7245 64.012 32.2685 63.748C31.8205 63.484 31.4645 63.116 31.2005 62.644C30.9445 62.164 30.8165 61.612 30.8165 60.988C30.8165 60.348 30.9485 59.792 31.2125 59.32C31.4765 58.84 31.8365 58.468 32.2925 58.204C32.7485 57.94 33.2605 57.808 33.8285 57.808C34.4045 57.808 34.9165 57.94 35.3645 58.204C35.8125 58.468 36.1645 58.836 36.4205 59.308C36.6845 59.78 36.8165 60.336 36.8165 60.976C36.8165 61.616 36.6845 62.172 36.4205 62.644C36.1645 63.116 35.8085 63.484 35.3525 63.748C34.8965 64.012 34.3805 64.144 33.8045 64.144ZM33.8045 63.112C34.1325 63.112 34.4285 63.032 34.6925 62.872C34.9645 62.712 35.1805 62.476 35.3405 62.164C35.5085 61.844 35.5925 61.448 35.5925 60.976C35.5925 60.504 35.5125 60.112 35.3525 59.8C35.1925 59.48 34.9765 59.24 34.7045 59.08C34.4405 58.92 34.1485 58.84 33.8285 58.84C33.5085 58.84 33.2125 58.92 32.9405 59.08C32.6685 59.24 32.4485 59.48 32.2805 59.8C32.1205 60.112 32.0405 60.504 32.0405 60.976C32.0405 61.448 32.1205 61.844 32.2805 62.164C32.4485 62.476 32.6645 62.712 32.9285 62.872C33.2005 63.032 33.4925 63.112 33.8045 63.112ZM40.4481 64.144C39.9761 64.144 39.5641 64.048 39.2121 63.856C38.8681 63.664 38.6001 63.376 38.4081 62.992C38.2241 62.608 38.1321 62.124 38.1321 61.54V57.952H39.3321V61.408C39.3321 61.976 39.4561 62.404 39.7041 62.692C39.9521 62.98 40.3081 63.124 40.7721 63.124C41.0841 63.124 41.3641 63.048 41.6121 62.896C41.8681 62.744 42.0681 62.524 42.2121 62.236C42.3561 61.948 42.4281 61.596 42.4281 61.18V57.952H43.6281V64H42.5601L42.4761 62.968C42.2921 63.336 42.0241 63.624 41.6721 63.832C41.3201 64.04 40.9121 64.144 40.4481 64.144ZM47.7551 64C47.3791 64 47.0511 63.94 46.7711 63.82C46.4911 63.7 46.2751 63.5 46.1231 63.22C45.9711 62.94 45.8951 62.56 45.8951 62.08V58.972H44.8511V57.952H45.8951L46.0391 56.44H47.0951V57.952H48.8111V58.972H47.0951V62.092C47.0951 62.436 47.1671 62.672 47.3111 62.8C47.4551 62.92 47.7031 62.98 48.0551 62.98H48.7511V64H47.7551Z" fill="#A0A0A0"/>
-</svg>
-            </div>
-            <span style={{ color: '#f05e23', fontSize: '0.9rem' }}></span>
-          </div>
-
-          {/* Existing Icon - Earn */}
-          <div 
-            onClick={() => navigate('/earn')}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{
-              width: '60px',
-              height: '60px',
-              backgroundColor: '#000000',
-              borderRadius: '12px',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: '0.0rem'
-            }}>
-              <svg width="51" height="69" viewBox="0 0 51 69" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="1" y="0.5" width="49" height="49" rx="24.5" fill="#202020"/>
-                <rect x="1" y="0.5" width="49" height="49" rx="24.5" stroke="#363636"/>
-                <path fill-rule="evenodd" clip-rule="evenodd" d="M34.33 23.715L33.812 25.647C33.207 27.902 32.905 29.03 32.22 29.761C31.6795 30.3382 30.98 30.7422 30.21 30.922C30.1133 30.9447 30.015 30.962 29.915 30.974C29 31.087 27.883 30.788 25.851 30.244C23.596 29.639 22.468 29.337 21.737 28.652C21.1597 28.1112 20.7556 27.4114 20.576 26.641C20.348 25.665 20.65 24.538 21.255 22.283L21.772 20.351L22.016 19.446C22.471 17.78 22.777 16.863 23.364 16.236C23.9046 15.6592 24.6041 15.2555 25.374 15.076C26.35 14.848 27.478 15.15 29.734 15.755C31.988 16.359 33.116 16.661 33.847 17.345C34.4245 17.886 34.8285 18.5862 35.008 19.357C35.236 20.333 34.934 21.46 34.33 23.715ZM24.551 22.805C24.5765 22.7098 24.6205 22.6206 24.6805 22.5425C24.7405 22.4644 24.8154 22.3988 24.9007 22.3496C24.986 22.3004 25.0802 22.2685 25.1779 22.2557C25.2756 22.2429 25.3749 22.2494 25.47 22.275L30.3 23.57C30.3976 23.5931 30.4897 23.6357 30.5706 23.695C30.6515 23.7544 30.7197 23.8294 30.7711 23.9156C30.8225 24.0018 30.8561 24.0974 30.8699 24.1968C30.8836 24.2963 30.8773 24.3974 30.8513 24.4943C30.8252 24.5913 30.78 24.682 30.7183 24.7611C30.6565 24.8402 30.5795 24.9062 30.4919 24.955C30.4042 25.0038 30.3076 25.0346 30.2078 25.0454C30.108 25.0562 30.0071 25.0469 29.911 25.018L25.081 23.724C24.889 23.6724 24.7254 23.5468 24.626 23.3747C24.5267 23.2025 24.4997 22.997 24.551 22.805ZM23.775 25.704C23.8266 25.512 23.9522 25.3484 24.1243 25.249C24.2964 25.1497 24.501 25.1227 24.693 25.174L27.591 25.951C27.6891 25.9736 27.7817 26.0158 27.8631 26.075C27.9446 26.1342 28.0133 26.2092 28.0652 26.2955C28.1171 26.3818 28.151 26.4777 28.165 26.5774C28.179 26.6771 28.1728 26.7786 28.1468 26.8759C28.1207 26.9732 28.0753 27.0642 28.0133 27.1435C27.9513 27.2229 27.874 27.2889 27.7859 27.3378C27.6978 27.3866 27.6008 27.4172 27.5007 27.4277C27.4005 27.4382 27.2993 27.4284 27.203 27.399L24.305 26.623C24.2098 26.5975 24.1206 26.5534 24.0425 26.4934C23.9644 26.4334 23.8988 26.3586 23.8496 26.2733C23.8004 26.188 23.7685 26.0937 23.7557 25.9961C23.7429 25.8984 23.7494 25.7991 23.775 25.704Z" fill="white"/>
-                <path opacity="0.5" d="M29.9155 30.9743C29.7063 31.6143 29.3389 32.1911 28.8475 32.6513C28.1165 33.3363 26.9885 33.6383 24.7335 34.2423C22.4785 34.8463 21.3505 35.1493 20.3755 34.9213C19.6051 34.7417 18.9052 34.3377 18.3645 33.7603C17.6795 33.0293 17.3765 31.9013 16.7725 29.6463L16.2555 27.7143C15.6505 25.4593 15.3485 24.3313 15.5755 23.3563C15.7554 22.5858 16.1598 21.886 16.7375 21.3453C17.4685 20.6603 18.5965 20.3583 20.8515 19.7533C21.2768 19.6387 21.6651 19.5357 22.0165 19.4443L21.7725 20.3503L21.2555 22.2823C20.6505 24.5373 20.3485 25.6643 20.5755 26.6403C20.7554 27.4108 21.1598 28.1107 21.7375 28.6513C22.4685 29.3363 23.5965 29.6383 25.8515 30.2433C27.8835 30.7873 29.0005 31.0873 29.9155 30.9743Z" fill="#E7CFC5"/>
-                <path d="M13.7959 64V55.6H19.0999V56.584H14.9959V59.272H18.7399V60.232H14.9959V63.016H19.0999V64H13.7959ZM22.5954 64.144C22.0994 64.144 21.6874 64.06 21.3594 63.892C21.0314 63.724 20.7874 63.5 20.6274 63.22C20.4674 62.932 20.3874 62.624 20.3874 62.296C20.3874 61.896 20.4914 61.556 20.6994 61.276C20.9074 60.988 21.2034 60.768 21.5874 60.616C21.9714 60.464 22.4314 60.388 22.9674 60.388H24.5394C24.5394 60.036 24.4874 59.744 24.3834 59.512C24.2794 59.28 24.1234 59.108 23.9154 58.996C23.7154 58.876 23.4594 58.816 23.1474 58.816C22.7874 58.816 22.4794 58.904 22.2234 59.08C21.9674 59.248 21.8074 59.5 21.7434 59.836H20.5434C20.5914 59.412 20.7354 59.052 20.9754 58.756C21.2234 58.452 21.5394 58.22 21.9234 58.06C22.3074 57.892 22.7154 57.808 23.1474 57.808C23.7154 57.808 24.1914 57.908 24.5754 58.108C24.9594 58.308 25.2474 58.592 25.4394 58.96C25.6394 59.32 25.7394 59.752 25.7394 60.256V64H24.6954L24.5994 62.98C24.5114 63.14 24.4074 63.292 24.2874 63.436C24.1674 63.58 24.0234 63.704 23.8554 63.808C23.6954 63.912 23.5074 63.992 23.2914 64.048C23.0834 64.112 22.8514 64.144 22.5954 64.144ZM22.8234 63.172C23.0794 63.172 23.3114 63.12 23.5194 63.016C23.7274 62.912 23.9034 62.772 24.0474 62.596C24.1994 62.412 24.3114 62.208 24.3834 61.984C24.4634 61.752 24.5074 61.516 24.5154 61.276V61.24H23.0874C22.7434 61.24 22.4634 61.284 22.2474 61.372C22.0394 61.452 21.8874 61.564 21.7914 61.708C21.6954 61.852 21.6474 62.02 21.6474 62.212C21.6474 62.412 21.6914 62.584 21.7794 62.728C21.8754 62.864 22.0114 62.972 22.1874 63.052C22.3634 63.132 22.5754 63.172 22.8234 63.172ZM27.2711 64V57.952H28.3511L28.4591 59.092C28.5951 58.82 28.7711 58.592 28.9871 58.408C29.2031 58.216 29.4551 58.068 29.7431 57.964C30.0391 57.86 30.3751 57.808 30.7511 57.808V59.08H30.3191C30.0711 59.08 29.8351 59.112 29.6111 59.176C29.3871 59.232 29.1871 59.332 29.0111 59.476C28.8431 59.62 28.7111 59.816 28.6151 60.064C28.5191 60.312 28.4711 60.62 28.4711 60.988V64H27.2711ZM31.8531 64V57.952H32.9331L33.0051 58.984C33.1971 58.624 33.4691 58.34 33.8211 58.132C34.1731 57.916 34.5771 57.808 35.0331 57.808C35.5131 57.808 35.9251 57.904 36.2691 58.096C36.6131 58.288 36.8811 58.58 37.0731 58.972C37.2651 59.356 37.3611 59.84 37.3611 60.424V64H36.1611V60.544C36.1611 59.984 36.0371 59.56 35.7891 59.272C35.5411 58.984 35.1811 58.84 34.7091 58.84C34.3971 58.84 34.1171 58.916 33.8691 59.068C33.6211 59.212 33.4211 59.428 33.2691 59.716C33.1251 60.004 33.0531 60.356 33.0531 60.772V64H31.8531Z" fill="#A0A0A0"/>
-              </svg>
-            </div>
-            <span style={{ color: '#f05e23', fontSize: '0.9rem' }}></span>
-          </div>
-
-          {/* Second Icon Placeholder */}
-          <div 
-            onClick={() => WebApp.openTelegramLink('https://t.me/apriloracle')}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              cursor: 'pointer'
-            }}>
-            <div style={{
-              width: '60px',
-              height: '60px',
-              backgroundColor: '#000000',
-              borderRadius: '12px',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: '0.0rem'
-            }}>
-              <svg width="51" height="69" viewBox="0 0 51 69" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="1" y="0.5" width="49" height="49" rx="24.5" fill="#202020"/>
-                <rect x="1" y="0.5" width="49" height="49" rx="24.5" stroke="#363636"/>
-                <path d="M17.5 25.4981C17.5004 23.6345 18.1133 21.8228 19.2442 20.3416C20.3751 18.8605 21.9614 17.792 23.7591 17.3007C25.5567 16.8094 27.4659 16.9225 29.193 17.6225C30.92 18.3225 32.3692 19.5707 33.3174 21.175C34.2656 22.7793 34.6603 24.6507 34.4408 26.5013C34.2213 28.3518 33.3997 30.079 32.1025 31.4169C30.8053 32.7548 29.1043 33.6293 27.2614 33.9059C25.4185 34.1824 23.5358 33.8457 21.903 32.9474L18.5982 33.9538C18.4508 33.9987 18.294 34.0027 18.1445 33.9654C17.995 33.928 17.8584 33.8507 17.7495 33.7418C17.6405 33.6328 17.5632 33.4963 17.5259 33.3468C17.4885 33.1973 17.4925 33.0405 17.5374 32.893L18.5438 29.5831C17.8583 28.3307 17.4993 26.9258 17.5 25.4981ZM22.6 24.6481C22.6 24.8735 22.6896 25.0897 22.849 25.2491C23.0084 25.4085 23.2246 25.4981 23.45 25.4981H28.55C28.7754 25.4981 28.9916 25.4085 29.151 25.2491C29.3104 25.0897 29.4 24.8735 29.4 24.6481C29.4 24.4226 29.3104 24.2064 29.151 24.047C28.9916 23.8876 28.7754 23.7981 28.55 23.7981H23.45C23.2246 23.7981 23.0084 23.8876 22.849 24.047C22.6896 24.2064 22.6 24.4226 22.6 24.6481ZM23.45 27.1981C23.2246 27.1981 23.0084 27.2876 22.849 27.447C22.6896 27.6064 22.6 27.8226 22.6 28.048C22.6 28.2735 22.6896 28.4897 22.849 28.6491C23.0084 28.8085 23.2246 28.898 23.45 28.898H26.85C27.0754 28.898 27.2916 28.8085 27.451 28.6491C27.6104 28.4897 27.7 28.2735 27.7 28.048C27.7 27.8226 27.6104 27.6064 27.451 27.447C27.2916 27.2876 27.0754 27.1981 26.85 27.1981H23.45Z" fill="#E7CFC5"/>
-                <path d="M16.4838 64.144C15.6598 64.144 14.9478 63.964 14.3478 63.604C13.7558 63.236 13.2958 62.728 12.9678 62.08C12.6478 61.424 12.4878 60.664 12.4878 59.8C12.4878 58.944 12.6478 58.188 12.9678 57.532C13.2958 56.876 13.7558 56.368 14.3478 56.008C14.9478 55.64 15.6598 55.456 16.4838 55.456C17.4678 55.456 18.2638 55.692 18.8718 56.164C19.4878 56.636 19.8798 57.3 20.0478 58.156H18.7278C18.6078 57.66 18.3598 57.264 17.9838 56.968C17.6158 56.672 17.1158 56.524 16.4838 56.524C15.9158 56.524 15.4238 56.656 15.0078 56.92C14.5918 57.184 14.2718 57.56 14.0478 58.048C13.8238 58.536 13.7118 59.12 13.7118 59.8C13.7118 60.48 13.8238 61.068 14.0478 61.564C14.2718 62.052 14.5918 62.428 15.0078 62.692C15.4238 62.948 15.9158 63.076 16.4838 63.076C17.1158 63.076 17.6158 62.936 17.9838 62.656C18.3598 62.368 18.6078 61.98 18.7278 61.492H20.0478C19.8798 62.324 19.4878 62.976 18.8718 63.448C18.2638 63.912 17.4678 64.144 16.4838 64.144ZM21.4234 64V55.36H22.6234V58.936C22.8234 58.584 23.0994 58.308 23.4514 58.108C23.8114 57.908 24.2074 57.808 24.6394 57.808C25.1194 57.808 25.5314 57.908 25.8754 58.108C26.2194 58.3 26.4834 58.592 26.6674 58.984C26.8514 59.368 26.9434 59.852 26.9434 60.436V64H25.7554V60.568C25.7554 60 25.6354 59.572 25.3954 59.284C25.1554 58.988 24.7994 58.84 24.3274 58.84C24.0074 58.84 23.7194 58.916 23.4634 59.068C23.2074 59.22 23.0034 59.444 22.8514 59.74C22.6994 60.028 22.6234 60.38 22.6234 60.796V64H21.4234ZM30.4821 64.144C29.9861 64.144 29.5741 64.06 29.2461 63.892C28.9181 63.724 28.6741 63.5 28.5141 63.22C28.3541 62.932 28.2741 62.624 28.2741 62.296C28.2741 61.896 28.3781 61.556 28.5861 61.276C28.7941 60.988 29.0901 60.768 29.4741 60.616C29.8581 60.464 30.3181 60.388 30.8541 60.388H32.4261C32.4261 60.036 32.3741 59.744 32.2701 59.512C32.1661 59.28 32.0101 59.108 31.8021 58.996C31.6021 58.876 31.3461 58.816 31.0341 58.816C30.6741 58.816 30.3661 58.904 30.1101 59.08C29.8541 59.248 29.6941 59.5 29.6301 59.836H28.4301C28.4781 59.412 28.6221 59.052 28.8621 58.756C29.1101 58.452 29.4261 58.22 29.8101 58.06C30.1941 57.892 30.6021 57.808 31.0341 57.808C31.6021 57.808 32.0781 57.908 32.4621 58.108C32.8461 58.308 33.1341 58.592 33.3261 58.96C33.5261 59.32 33.6261 59.752 33.6261 60.256V64H32.5821L32.4861 62.98C32.3981 63.14 32.2941 63.292 32.1741 63.436C32.0541 63.58 31.9101 63.704 31.7421 63.808C31.5821 63.912 31.3941 63.992 31.1781 64.048C30.9701 64.112 30.7381 64.144 30.4821 64.144ZM30.7101 63.172C30.9661 63.172 31.1981 63.12 31.4061 63.016C31.6141 62.912 31.7901 62.772 31.9341 62.596C32.0861 62.412 32.1981 62.208 32.2701 61.984C32.3501 61.752 32.3941 61.516 32.4021 61.276V61.24H30.9741C30.6301 61.24 30.3501 61.284 30.1341 61.372C29.9261 61.452 29.7741 61.564 29.6781 61.708C29.5821 61.852 29.5341 62.02 29.5341 62.212C29.5341 62.412 29.5781 62.584 29.6661 62.728C29.7621 62.864 29.8981 62.972 30.0741 63.052C30.2501 63.132 30.4621 63.172 30.7101 63.172ZM37.5129 64C37.1369 64 36.8089 63.94 36.5289 63.82C36.2489 63.7 36.0329 63.5 35.8809 63.22C35.7289 62.94 35.6529 62.56 35.6529 62.08V58.972H34.6089V57.952H35.6529L35.7969 56.44H36.8529V57.952H38.5689V58.972H36.8529V62.092C36.8529 62.436 36.9249 62.672 37.0689 62.8C37.2129 62.92 37.4609 62.98 37.8129 62.98H38.5089V64H37.5129Z" fill="#A0A0A0"/>
-              </svg>
-            </div>
-            <span style={{ color: '#f05e23', fontSize: '0.9rem' }}></span>
-          </div>
-
-             {/* Existing Icon - Earn */}
-             <div 
-            onClick={() => navigate('/deals')}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{
-              width: '60px',
-              height: '60px',
-              backgroundColor: '#000000',
-              borderRadius: '12px',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: '0.0rem'
-            }}>
-              <svg width="51" height="69" viewBox="0 0 51 69" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect x="1" y="0.5" width="49" height="49" rx="24.5" fill="#202020"/>
-<rect x="1" y="0.5" width="49" height="49" rx="24.5" stroke="#363636"/>
-<path d="M19.5 20.4999V17.4999C19.5 16.9733 19.6386 16.456 19.902 16C20.1653 15.5439 20.544 15.1652 21 14.9019C21.4561 14.6386 21.9734 14.5 22.5 14.5C23.0266 14.5 23.5439 14.6386 24 14.9019C24.4561 14.6386 24.9734 14.5 25.5 14.5C26.0266 14.5 26.5439 14.6386 27 14.9019C27.456 15.1652 27.8347 15.5439 28.098 16C28.3614 16.456 28.5 16.9733 28.5 17.4999V20.4999H29.25C29.7321 20.4998 30.2015 20.6545 30.589 20.9413C30.9766 21.2281 31.2617 21.6318 31.4025 22.0929C31.1308 22.0313 30.8531 22.0001 30.5745 21.9999H27V17.4999C27.0002 17.2709 26.9479 17.0449 26.8472 16.8392C26.7465 16.6335 26.6 16.4536 26.419 16.3133C26.238 16.173 26.0273 16.076 25.803 16.0297C25.5787 15.9834 25.3467 15.9892 25.125 16.0464C25.365 16.4769 25.5 16.9734 25.5 17.4999V22.0779C24.6518 22.2539 23.8902 22.7171 23.3437 23.3893C22.7972 24.0615 22.4992 24.9016 22.5 25.7679V30.0864C22.5 31.0719 22.8855 32.0199 23.577 32.7234L26.1285 35.3304L26.2485 35.4999H19.5C18.7044 35.4999 17.9413 35.1839 17.3787 34.6212C16.8161 34.0586 16.5 33.2956 16.5 32.4999V22.7499C16.5 22.1532 16.7371 21.5809 17.159 21.1589C17.581 20.737 18.1533 20.4999 18.75 20.4999H19.5ZM22.5 15.9999C22.1022 15.9999 21.7206 16.158 21.4393 16.4393C21.158 16.7206 21 17.1021 21 17.4999V20.4999H24V17.4999C24 17.1021 23.842 16.7206 23.5607 16.4393C23.2794 16.158 22.8978 15.9999 22.5 15.9999ZM24.648 31.6749C24.2303 31.2514 23.9973 30.6797 24 30.0849V25.7694C23.9994 25.4716 24.0576 25.1766 24.1711 24.9013C24.2847 24.6259 24.4514 24.3757 24.6618 24.1649C24.8722 23.9541 25.1221 23.7869 25.3972 23.6728C25.6723 23.5587 25.9672 23.4999 26.265 23.4999H30.5745C31.179 23.4999 31.758 23.7414 32.1825 24.1704L36.8445 28.8804C37.0558 29.0942 37.2225 29.3478 37.335 29.6265C37.4475 29.9053 37.5036 30.2035 37.4999 30.5041C37.4963 30.8046 37.4331 31.1015 37.3139 31.3774C37.1947 31.6533 37.0219 31.9028 36.8055 32.1114L32.385 36.3669C31.9549 36.7803 31.379 37.0073 30.7824 36.9986C30.1859 36.9899 29.6169 36.7462 29.199 36.3204L24.648 31.6749ZM27 27.6249C27 27.9233 27.1185 28.2094 27.3295 28.4204C27.5405 28.6314 27.8266 28.7499 28.125 28.7499C28.4234 28.7499 28.7095 28.6314 28.9205 28.4204C29.1315 28.2094 29.25 27.9233 29.25 27.6249C29.25 27.3266 29.1315 27.0404 28.9205 26.8294C28.7095 26.6185 28.4234 26.4999 28.125 26.4999C27.8266 26.4999 27.5405 26.6185 27.3295 26.8294C27.1185 27.0404 27 27.3266 27 27.6249Z" fill="#E7CFC5"/>
-<path d="M10.9427 64V55.6H13.4027C14.3787 55.6 15.1827 55.772 15.8147 56.116C16.4547 56.46 16.9267 56.948 17.2307 57.58C17.5427 58.204 17.6987 58.948 17.6987 59.812C17.6987 60.676 17.5427 61.42 17.2307 62.044C16.9267 62.668 16.4547 63.152 15.8147 63.496C15.1827 63.832 14.3787 64 13.4027 64H10.9427ZM12.1427 62.992H13.3547C14.1307 62.992 14.7427 62.864 15.1907 62.608C15.6467 62.352 15.9707 61.988 16.1627 61.516C16.3627 61.036 16.4627 60.468 16.4627 59.812C16.4627 59.148 16.3627 58.576 16.1627 58.096C15.9707 57.616 15.6467 57.248 15.1907 56.992C14.7427 56.736 14.1307 56.608 13.3547 56.608H12.1427V62.992ZM21.8215 64.144C21.2375 64.144 20.7215 64.012 20.2735 63.748C19.8335 63.476 19.4895 63.1 19.2415 62.62C18.9935 62.14 18.8695 61.58 18.8695 60.94C18.8695 60.292 18.9935 59.728 19.2415 59.248C19.4895 58.76 19.8375 58.38 20.2855 58.108C20.7335 57.836 21.2495 57.7 21.8335 57.7C22.4335 57.7 22.9455 57.836 23.3695 58.108C23.7935 58.372 24.1175 58.728 24.3415 59.176C24.5655 59.616 24.6775 60.108 24.6775 60.652C24.6775 60.732 24.6735 60.816 24.6655 60.904C24.6655 60.992 24.6615 61.092 24.6535 61.204H19.7455V60.364H23.4775C23.4615 59.836 23.2975 59.428 22.9855 59.14C22.6735 58.844 22.2855 58.696 21.8215 58.696C21.5015 58.696 21.2055 58.772 20.9335 58.924C20.6695 59.076 20.4535 59.3 20.2855 59.596C20.1255 59.884 20.0455 60.252 20.0455 60.7V61.036C20.0455 61.492 20.1255 61.88 20.2855 62.2C20.4455 62.512 20.6575 62.748 20.9215 62.908C21.1935 63.068 21.4895 63.148 21.8095 63.148C22.2095 63.148 22.5295 63.068 22.7695 62.908C23.0095 62.74 23.1855 62.516 23.2975 62.236H24.5095C24.4055 62.596 24.2295 62.92 23.9815 63.208C23.7335 63.496 23.4255 63.724 23.0575 63.892C22.6975 64.06 22.2855 64.144 21.8215 64.144ZM28.027 64.144C27.539 64.144 27.131 64.06 26.803 63.892C26.483 63.716 26.243 63.484 26.083 63.196C25.923 62.908 25.843 62.596 25.843 62.26C25.843 61.86 25.943 61.516 26.143 61.228C26.351 60.94 26.647 60.72 27.031 60.568C27.415 60.416 27.875 60.34 28.411 60.34H29.971C29.971 59.972 29.923 59.668 29.827 59.428C29.731 59.188 29.579 59.008 29.371 58.888C29.171 58.768 28.911 58.708 28.591 58.708C28.239 58.708 27.939 58.792 27.691 58.96C27.443 59.128 27.287 59.376 27.223 59.704H26.023C26.071 59.28 26.215 58.92 26.455 58.624C26.695 58.328 26.999 58.1 27.367 57.94C27.743 57.78 28.151 57.7 28.591 57.7C29.159 57.7 29.631 57.8 30.007 58C30.391 58.2 30.679 58.484 30.871 58.852C31.071 59.212 31.171 59.644 31.171 60.148V64H30.115L30.019 62.968C29.939 63.136 29.835 63.292 29.707 63.436C29.587 63.572 29.443 63.696 29.275 63.808C29.115 63.912 28.931 63.992 28.723 64.048C28.515 64.112 28.283 64.144 28.027 64.144ZM28.255 63.172C28.503 63.172 28.731 63.12 28.939 63.016C29.147 62.904 29.323 62.76 29.467 62.584C29.619 62.4 29.735 62.196 29.815 61.972C29.895 61.74 29.939 61.496 29.947 61.24V61.18H28.531C28.187 61.18 27.911 61.224 27.703 61.312C27.495 61.4 27.343 61.52 27.247 61.672C27.151 61.816 27.103 61.984 27.103 62.176C27.103 62.376 27.147 62.552 27.235 62.704C27.323 62.848 27.455 62.964 27.631 63.052C27.807 63.132 28.015 63.172 28.255 63.172ZM32.7499 64V55.36H33.9499V64H32.7499ZM37.9492 64.144C37.4053 64.144 36.9413 64.06 36.5573 63.892C36.1733 63.716 35.8733 63.476 35.6573 63.172C35.4493 62.86 35.3253 62.504 35.2853 62.104H36.4973C36.5373 62.296 36.6133 62.472 36.7253 62.632C36.8373 62.792 36.9933 62.924 37.1933 63.028C37.4013 63.124 37.6533 63.172 37.9492 63.172C38.2053 63.172 38.4213 63.136 38.5973 63.064C38.7733 62.984 38.9013 62.876 38.9813 62.74C39.0693 62.604 39.1133 62.456 39.1133 62.296C39.1133 62.064 39.0573 61.888 38.9453 61.768C38.8413 61.64 38.6813 61.544 38.4653 61.48C38.2573 61.408 38.0013 61.348 37.6973 61.3C37.3933 61.244 37.1053 61.176 36.8333 61.096C36.5693 61.008 36.3373 60.896 36.1373 60.76C35.9373 60.624 35.7813 60.456 35.6693 60.256C35.5573 60.048 35.5013 59.8 35.5013 59.512C35.5013 59.16 35.5933 58.848 35.7773 58.576C35.9613 58.304 36.2253 58.092 36.5693 57.94C36.9133 57.78 37.3253 57.7 37.8053 57.7C38.4853 57.7 39.0293 57.86 39.4373 58.18C39.8453 58.5 40.0853 58.948 40.1573 59.524H38.9933C38.9533 59.26 38.8293 59.056 38.6213 58.912C38.4133 58.76 38.1373 58.684 37.7933 58.684C37.4333 58.684 37.1573 58.752 36.9653 58.888C36.7813 59.024 36.6893 59.204 36.6893 59.428C36.6893 59.58 36.7373 59.72 36.8333 59.848C36.9293 59.968 37.0813 60.068 37.2893 60.148C37.4973 60.228 37.7613 60.296 38.0813 60.352C38.5373 60.432 38.9333 60.532 39.2693 60.652C39.6053 60.772 39.8653 60.952 40.0493 61.192C40.2413 61.432 40.3373 61.772 40.3373 62.212C40.3373 62.604 40.2373 62.948 40.0373 63.244C39.8453 63.532 39.5693 63.756 39.2093 63.916C38.8573 64.068 38.4373 64.144 37.9492 64.144Z" fill="#A0A0A0"/>
-</svg>
-            </div>
-            <span style={{ color: '#f05e23', fontSize: '0.9rem' }}></span>
-          </div>
-          </div>
-
-        {/* Existing Recommended Deals Section */}
-        <div style={{ padding: '0 1rem' }}>
-          <h3 style={{ color: '#f05e23', marginBottom: '1rem' }}>Deals</h3>
-          
-          {isLoading ? (
-            <p style={{ color: '#A0AEC0' }}>Loading deals...</p>
-          ) : recommendations.length > 0 ? (
-            <div>
-              {recommendations.map((deal: any, index) => (
-                <div key={deal.id || index} style={{ 
-                  marginBottom: '1rem',
-                  backgroundColor: '#1A202C',
-                  borderRadius: '8px',
-                  padding: '1rem',
-                  cursor: 'pointer'
-                }}
-                onClick={() => navigate(`/merchant-deals/${encodeURIComponent(deal.merchantName)}`)}>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <div style={{ 
-                      backgroundColor: 'white',
-                      padding: '0.5rem',
-                      borderRadius: '4px',
-                      marginRight: '1rem',
-                      width: '50px',
-                      height: '50px',
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center'
-                    }}>
-                      <img 
-                        src={deal.logoAbsoluteUrl || deal.logo}
-                        alt={`${deal.merchantName} logo`}
-                        style={{ 
-                          maxWidth: '100%',
-                          maxHeight: '100%',
-                          objectFit: 'contain'
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <p style={{ 
-                        color: '#f05e23',
-                        fontWeight: 'bold',
-                        marginBottom: '0.25rem'
-                      }}>
-                        {deal.merchantName}
-                      </p>
-                      <p style={{ 
-                        color: '#A0AEC0',
-                        fontSize: '0.9rem'
-                      }}>
-                        {deal.cashbackType}: {deal.cashback}{deal.currency}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p style={{ color: '#A0AEC0' }}>Please reload app to see your deals.</p>
-          )}
-        </div>
-
-        {showSurvey && (
-          <SurveyQuestion
-            onResponse={handleSurveyResponse}
-            onClose={() => setShowSurvey(false)}
-          />
-        )}
-      </>
-    );
-  };
-
   const Navigation: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
@@ -1030,11 +1092,11 @@ const TelegramMiniApp: React.FC = () => {
   
         {/* Deals button */}
         <button
-          onClick={() => navigate('/tap')}
+          onClick={() => navigate('/deals')}
           style={{
             background: 'none',
             border: 'none',
-            color: location.pathname === '/tap' ? '#f05e23' : '#fff',
+            color: location.pathname === '/deals' ? '#f05e23' : '#fff',
             fontSize: '12px',
             cursor: 'pointer',
             display: 'flex',
@@ -1047,7 +1109,7 @@ const TelegramMiniApp: React.FC = () => {
             <path d="M13 6C13 4.93913 12.5786 3.92172 11.8284 3.17157C11.0783 2.42143 10.0609 2 9 2C7.93913 2 6.92172 2.42143 6.17157 3.17157C5.42143 3.92172 5 4.93913 5 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M10.318 8.92118V6.36418C10.3084 6.00895 10.1605 5.6715 9.90583 5.42365C9.65117 5.17579 9.30984 5.03711 8.95448 5.03711C8.59912 5.03711 8.25779 5.17579 8.00313 5.42365C7.74848 5.6715 7.6006 6.00895 7.59098 6.36418V14.2562L6.11798 12.8002C5.96455 12.6495 5.78138 12.5325 5.58017 12.4565C5.37897 12.3806 5.16414 12.3475 4.94941 12.3592C4.73467 12.371 4.52475 12.4274 4.33304 12.5248C4.14133 12.6223 3.97204 12.7586 3.83598 12.9252C3.62389 13.1861 3.50564 13.5108 3.5002 13.847C3.49476 14.1832 3.60245 14.5115 3.80598 14.7792L6.53798 18.3742C7.15798 19.1902 7.46798 19.5982 7.83998 19.9152C8.40998 20.3992 9.08998 20.7352 9.82398 20.8952C10.304 20.9992 10.821 20.9992 11.854 20.9992C13.824 20.9992 14.809 20.9992 15.593 20.7022C16.1835 20.48 16.7206 20.136 17.1696 19.6928C17.6185 19.2495 17.9692 18.7168 18.199 18.1292C18.5 17.3552 18.5 16.3822 18.5 14.4382V12.2252C18.4969 11.7986 18.3424 11.3869 18.064 11.0637C17.7856 10.7404 17.4014 10.5265 16.98 10.4602L16.67 10.4102C16.5606 10.3912 16.4484 10.3962 16.3411 10.4249C16.2338 10.4536 16.1341 10.5052 16.0488 10.5763C15.9634 10.6473 15.8946 10.7361 15.847 10.8364C15.7993 10.9367 15.7741 11.0462 15.773 11.1572M10.318 8.92118L10.843 8.66218C11.096 8.53718 11.378 8.45718 11.653 8.52218C12.0472 8.61295 12.3992 8.83414 12.6521 9.14995C12.9049 9.46575 13.0437 9.85765 13.046 10.2622M10.318 8.92118V11.1572M15.773 11.1572C15.773 10.1692 14.959 9.36718 13.955 9.36718C13.453 9.36718 13.046 9.76818 13.046 10.2622M15.773 11.1572V12.0522M13.046 10.2622V11.1572" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <span style={{ marginTop: '2px' }}>Tap</span>
+          <span style={{ marginTop: '2px' }}>Deals</span>
         </button>
   
         {/* Earn button */}
@@ -1070,28 +1132,6 @@ const TelegramMiniApp: React.FC = () => {
             <path fill-rule="evenodd" clip-rule="evenodd" d="M22 12C22 17.523 17.523 22 12 22C6.477 22 2 17.523 2 12C2 6.477 6.477 2 12 2C17.523 2 22 6.477 22 12ZM12 5.25C12.1989 5.25 12.3897 5.32902 12.5303 5.46967C12.671 5.61032 12.75 5.80109 12.75 6V6.317C14.38 6.609 15.75 7.834 15.75 9.5C15.75 9.69891 15.671 9.88968 15.5303 10.0303C15.3897 10.171 15.1989 10.25 15 10.25C14.8011 10.25 14.6103 10.171 14.4697 10.0303C14.329 9.88968 14.25 9.69891 14.25 9.5C14.25 8.822 13.686 8.103 12.75 7.847V11.317C14.38 11.609 15.75 12.834 15.75 14.5C15.75 16.166 14.38 17.391 12.75 17.683V18C12.75 18.1989 12.671 18.3897 12.5303 18.5303C12.3897 18.671 12.1989 18.75 12 18.75C11.8011 18.75 11.6103 18.671 11.4697 18.5303C11.329 18.3897 11.25 18.1989 11.25 18V17.683C9.62 17.391 8.25 16.166 8.25 14.5C8.25 14.3011 8.32902 14.1103 8.46967 13.9697C8.61032 13.829 8.80109 13.75 9 13.75C9.19891 13.75 9.38968 13.829 9.53033 13.9697C9.67098 14.1103 9.75 14.3011 9.75 14.5C9.75 15.178 10.314 15.897 11.25 16.152V12.683C9.62 12.391 8.25 11.166 8.25 9.5C8.25 7.834 9.62 6.609 11.25 6.317V6C11.25 5.80109 11.329 5.61032 11.4697 5.46967C11.6103 5.32902 11.8011 5.25 12 5.25Z" fill="currentColor"/>
           </svg>
           <span style={{ marginTop: '2px' }}>Earn</span>
-        </button>
-  
-        {/* Friends button */}
-        <button
-          onClick={() => navigate('/friends')}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: location.pathname === '/friends' ? '#f05e23' : '#fff',
-            fontSize: '12px',
-            cursor: 'pointer',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            paddingTop: '4px',
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" stroke="currentColor" stroke-width="2"/>
-            <path d="M17.0001 22H5.26606C4.98244 22.0001 4.70206 21.9398 4.44351 21.8232C4.18496 21.7066 3.95416 21.5364 3.76644 21.3238C3.57871 21.1112 3.43835 20.8611 3.35467 20.5901C3.27098 20.3191 3.24589 20.0334 3.28106 19.752L3.67106 16.628C3.76176 15.9022 4.11448 15.2346 4.66289 14.7506C5.21131 14.2667 5.91764 13.9997 6.64906 14H7.00006M19.0001 14V18M17.0001 16H21.0001" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <span style={{ marginTop: '2px' }}>Friends</span>
         </button>
   
         {/* Profile button */}
@@ -1119,10 +1159,29 @@ const TelegramMiniApp: React.FC = () => {
     );
   };
 
+  // Add websocket context
+  const { provider, ydoc } = useWebSocket();
+
+  // Update the MainPage props to use context
+  const mainPageProps = {
+    totalBalanceUsd,
+    aprilBalance: {
+      value: aprilBalance.value,
+      displayValue: aprilBalance.displayValue,
+      display: aprilBalance.display
+    },
+    localWalletAddress,
+    address,
+    showSurvey,
+    handleSurveyResponse,
+    setShowSurvey,
+    ydoc
+  };
+
   return (
     <Router>
       <div style={{ backgroundColor: '#000000', color: '#FFFFFF', padding: '1rem', maxWidth: '28rem', margin: '0 auto', fontFamily: 'sans-serif', minHeight: '100vh', position: 'relative' }}>
-        {/* Connection status icon */}
+        {/* Connection status icon now uses websocket context */}
         <div 
           style={{
             position: 'absolute',
@@ -1131,9 +1190,10 @@ const TelegramMiniApp: React.FC = () => {
             width: '12px',
             height: '12px',
             borderRadius: '50%',
+            backgroundColor: provider ? '#000000' : '#000000',
             transition: 'background-color 0.3s ease',
           }}
-          title={isConnected ? 'Connected to sync server' : 'Disconnected from sync server'}
+          title={provider ? 'Connected to sync server' : 'Disconnected from sync server'}
         />
 
         <InitialDataFetcher />
@@ -1141,10 +1201,12 @@ const TelegramMiniApp: React.FC = () => {
           onConnectionStatus={handleConnectionStatus}
           onReady={handlePeerSyncReady}
         />
-        
+         <BrainInitializer>
+        <> </> 
+      </BrainInitializer>
 
         <Routes>
-          <Route path="/" element={<MainPage />} />
+          <Route path="/" element={<MainPage {...mainPageProps} />} />
           <Route path="/tap" element={
             <TapComponent
               score={score}
@@ -1185,4 +1247,10 @@ const TelegramMiniApp: React.FC = () => {
 }
 
 export default TelegramMiniApp
+
+
+
+
+
+
 

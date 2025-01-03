@@ -1,8 +1,15 @@
 import { createStore, Row } from 'tinybase';
 import { createLocalPersister } from 'tinybase/persisters/persister-browser';
+import { WebsocketProvider } from 'y-websocket';
 
 const interactionStore = createStore();
 const interactionPersister = createLocalPersister(interactionStore, 'user-interactions');
+
+let wsProvider: WebsocketProvider | null = null;
+
+export const setWebsocketProvider = (provider: WebsocketProvider) => {
+    wsProvider = provider;
+};
 
 export interface Interaction {
   userId: string;
@@ -59,7 +66,9 @@ export const loadInteractions = async (): Promise<Interaction[]> => {
 };
 
 export const getCurrentUserId = (): string => {
-  // This function should return the current user's ID
-  // For now, we'll return a placeholder. In a real app, you'd get this from your auth system
-  return 'current-user-id';
+    if (!wsProvider?.awareness) {
+        console.warn('WebSocket provider or awareness not initialized');
+        return 'offline-user';
+    }
+    return wsProvider.awareness.clientID.toString();
 };

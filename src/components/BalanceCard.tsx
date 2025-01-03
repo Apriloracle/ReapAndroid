@@ -78,4 +78,3 @@ const BalanceCard: React.FC<BalanceCardProps> = ({ totalBalance, availableApril,
 };
 
 export default BalanceCard;
-
