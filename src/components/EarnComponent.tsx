@@ -33,7 +33,7 @@ const EarnComponent: React.FC = () => {
             <path d="M12 19L5 12L12 5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
-        <h2 style={{ color: '#f05e23', margin: 0 }}>Social & Support</h2>
+        <h2 style={{ color: '#f05e23', margin: 0 }}>Social</h2>
       </div>
 
      {/* Updated "Download Reap" button */}
