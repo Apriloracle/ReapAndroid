@@ -11,7 +11,7 @@
   "dependencies": {
     "@aviarytech/did-peer": "^0.0.22",
     "@digitalbazaar/ed25519-verification-key-2020": "^4.2.0",
-    "@electric-sql/pglite": "^0.2.6",
+    "@electric-sql/pglite": "^0.2.15",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
     "@fortawesome/react-fontawesome": "^0.2.2",
     "@tanstack/react-query": "^5.0.0",
