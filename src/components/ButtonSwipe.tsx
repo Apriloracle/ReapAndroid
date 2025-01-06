@@ -1,6 +1,6 @@
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimesCircle, faShoppingCart } from '@fortawesome/free-solid-svg-icons';
+import { faTimesCircle, faShoppingBag } from '@fortawesome/free-solid-svg-icons';
 import styles from '../styles/ButtonSwipe.module.css';
 
 interface ButtonSwipeProps {
@@ -67,7 +67,7 @@ const ButtonSwipe: React.FC<ButtonSwipeProps> = ({
         <FontAwesomeIcon icon={faTimesCircle} size="3x" color="red" />
       </button>
       <button className={styles.acceptButton} onClick={handleAccept}>
-        <FontAwesomeIcon icon={faShoppingCart} size="3x" color="green" />
+        <FontAwesomeIcon icon={faShoppingBag} size="3x" color="green" />
       </button>
     </div>
   );
