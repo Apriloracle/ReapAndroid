@@ -1,3 +1,5 @@
+/* ProductCard.module.css */
+
 .productCard {
   position: relative;
   display: flex;
@@ -27,4 +29,37 @@
   transform: translateY(0);
 }
 
-/* Add any other styles from your original ProductCard.css */ 
+/* Styles for the arrow button container */
+.arrowButtonContainer {
+  position: absolute;
+  top: 30%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  transform: translateY(-50%);
+  pointer-events: none; /* Important: Allows clicks to pass through to the card */
+}
+
+/* Styles for the arrow buttons */
+.arrowButton {
+  background: none;
+  border: none;
+  padding: 10px; /* Adjust as needed */
+  cursor: pointer;
+  border-radius: 50%; /* Circular buttons */
+  box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.2); /* Subtle shadow */
+  margin: 0 10px; /* Add margin to separate from card edges */
+  pointer-events: auto; /* Important: Allows clicking on the buttons */
+  transition: transform 0.2s ease, box-shadow 0.2s ease; /* Smooth hover transition */
+}
+
+.arrowButton:hover {
+  transform: translateY(-1px); /* Slightly raise on hover */
+  box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.3); /* Increase shadow on hover */
+}
+
+.arrowButton:focus {
+  outline: none;
+  /* Add a focus style here, e.g., different box-shadow or background color */
+}

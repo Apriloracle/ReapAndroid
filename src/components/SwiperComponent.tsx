@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useSwipeable } from 'react-swipeable';
 import styles from '../styles/ProductCard.module.css';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faArrowLeft, faArrowRight } from '@fortawesome/free-solid-svg-icons';
 
 interface SwiperComponentProps {
   recommendations: any[];
@@ -15,7 +17,6 @@ const SwiperComponent: React.FC<SwiperComponentProps> = ({
   setCurrentDealIndex,
   isLoading,
 }) => {
-  // Filter out deals that don't have a logoAbsoluteUrl
   const validRecommendations = recommendations.filter(deal => deal.logoAbsoluteUrl);
 
   const { ref: swipeRef } = useSwipeable({
@@ -35,7 +36,6 @@ const SwiperComponent: React.FC<SwiperComponentProps> = ({
 
   const currentDeal = validRecommendations[currentDealIndex];
 
-  // State to track image loading status
   const [imageLoaded, setImageLoaded] = useState(false);
 
   const handleImageLoad = () => {
@@ -46,7 +46,6 @@ const SwiperComponent: React.FC<SwiperComponentProps> = ({
     setImageLoaded(false);
     console.error(`Error loading image: ${currentDeal?.logoAbsoluteUrl}`);
 
-    // Automatically move to the next deal
     if (currentDealIndex < validRecommendations.length - 1) {
       setCurrentDealIndex(currentDealIndex + 1);
     }
@@ -55,9 +54,7 @@ const SwiperComponent: React.FC<SwiperComponentProps> = ({
   return (
     <div style={{ marginTop: '0rem' }} ref={swipeRef}>
       {isLoading ? (
-        <div style={{ textAlign: 'center', padding: '1rem' }}>
-          Loading deals...
-        </div>
+        <div style={{ textAlign: 'center', padding: '1rem' }}>Loading deals...</div>
       ) : (
         <div
           style={{
@@ -84,7 +81,6 @@ const SwiperComponent: React.FC<SwiperComponentProps> = ({
                     alignItems: 'center',
                   }}
                 >
-                  {/* Hidden image to trigger load and error events */}
                   <img
                     src={currentDeal.logoAbsoluteUrl}
                     alt={currentDeal.merchantName}
@@ -92,7 +88,6 @@ const SwiperComponent: React.FC<SwiperComponentProps> = ({
                     onLoad={handleImageLoad}
                     onError={handleImageError}
                   />
-                  {/* Display the image only if it has successfully loaded */}
                   {imageLoaded && (
                     <img
                       src={currentDeal.logoAbsoluteUrl}
@@ -104,32 +99,36 @@ const SwiperComponent: React.FC<SwiperComponentProps> = ({
                       }}
                     />
                   )}
-                  {/* Placeholder or error message when the image fails to load */}
                   {!imageLoaded && (
-                    <div style={{ textAlign: 'center' }}>
-                      Image not available
-                    </div>
+                    <div style={{ textAlign: 'center' }}>Image not available</div>
                   )}
                 </div>
-                {/* Deal information */}
-                <div style={{ fontSize: '1.15rem', lineHeight: '1.2', marginTop: '0.5rem', textAlign: 'center' }}>
+                <div
+                  style={{
+                    fontSize: '1.15rem',
+                    lineHeight: '1.2',
+                    marginTop: '0.5rem',
+                    textAlign: 'center',
+                  }}
+                >
                   <div>{currentDeal.merchantName}</div>
-                  {currentDeal.codes && (() => {
-                    try {
-                      const codes = JSON.parse(currentDeal.codes);
-                      if (Array.isArray(codes) && codes.length > 0) {
-                        return (
-                          <>
-                            <div>Code: {codes[0].code}</div>
-                            <div>{codes[0].summary}</div>
-                          </>
-                        );
+                  {currentDeal.codes &&
+                    (() => {
+                      try {
+                        const codes = JSON.parse(currentDeal.codes);
+                        if (Array.isArray(codes) && codes.length > 0) {
+                          return (
+                            <>
+                              <div>Code: {codes[0].code}</div>
+                              <div>{codes[0].summary}</div>
+                            </>
+                          );
+                        }
+                      } catch (e) {
+                        console.error('Error parsing codes:', e);
                       }
-                    } catch (e) {
-                      console.error('Error parsing codes:', e);
-                    }
-                    return null;
-                  })()}
+                      return null;
+                    })()}
                 </div>
               </div>
             )
@@ -139,11 +138,44 @@ const SwiperComponent: React.FC<SwiperComponentProps> = ({
             </div>
           )}
 
-          {/* Indicator for end of deals */}
           {currentDealIndex >= validRecommendations.length - 1 && validRecommendations.length > 0 && (
-            <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-              No more deals to display.
+            <div style={{ textAlign: 'center', marginTop: '1rem' }}>No more deals to display.</div>
+          )}
+
+           {/* Arrow Button Container */}
+           {!isLoading && validRecommendations.length > 0 && (
+            <div className={styles.arrowButtonContainer}>
+              {/* Left Arrow Button */}
+              <button
+                className={styles.arrowButton}
+                onClick={() => {
+                  const newIndex = Math.max(currentDealIndex - 1, 0);
+                  setCurrentDealIndex(newIndex);
+                }}
+              >
+                <FontAwesomeIcon 
+                  icon={faArrowLeft} 
+                  size="3x" 
+                  style={{ color: "#f05e23" }} // Your hex color 
+                />
+              </button>
+
+              {/* Right Arrow Button */}
+              <button
+                className={styles.arrowButton}
+                onClick={() => {
+                  const newIndex = Math.min(currentDealIndex + 1, validRecommendations.length - 1);
+                  setCurrentDealIndex(newIndex);
+                }}
+              >
+                <FontAwesomeIcon 
+                  icon={faArrowRight} 
+                  size="3x" 
+                  style={{ color: "#f05e23" }} // Your hex color
+                />
+              </button>
             </div>
+          
           )}
         </div>
       )}

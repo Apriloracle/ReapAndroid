@@ -1,6 +1,6 @@
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimesCircle, faShoppingBag } from '@fortawesome/free-solid-svg-icons';
+import { faTimesCircle, faShoppingBag, faArrowLeft, faArrowRight } from '@fortawesome/free-solid-svg-icons';
 import styles from '../styles/ButtonSwipe.module.css';
 
 interface ButtonSwipeProps {
@@ -47,28 +47,32 @@ const ButtonSwipe: React.FC<ButtonSwipeProps> = ({
         throw new Error('Failed to activate deal');
       }
 
-      // Get the redirect URL from the response
-      const data = await response.json(); // Parse JSON response
+      const data = await response.json();
       if (data && data.redirectUrl) {
-        window.location.href = data.redirectUrl; // Redirect using the URL from the response
+        window.location.href = data.redirectUrl;
       } else {
         console.error('Redirect URL not found in response data.');
-        // Handle error: redirect URL not in response
       }
     } catch (error) {
       console.error('Error activating deal:', error);
-      // Handle error (e.g., show an error message to the user)
     }
   };
 
   return (
     <div className={styles.buttonContainer}>
+   
+
+      {/* Reject (X) Button */}
       <button className={styles.rejectButton} onClick={onReject}>
         <FontAwesomeIcon icon={faTimesCircle} size="3x" color="red" />
       </button>
+
+      {/* Accept (Shopping Bag) Button */}
       <button className={styles.acceptButton} onClick={handleAccept}>
         <FontAwesomeIcon icon={faShoppingBag} size="3x" color="green" />
       </button>
+
+    
     </div>
   );
 };
