@@ -188,7 +188,7 @@ const SwiperComponent: React.FC<SwiperComponentProps> = ({
               color: '#666',
               fontSize: '16px'
             }}>
-              No deals available at the moment
+              Please reload app to see your deals
             </div>
           )}
         </div>
