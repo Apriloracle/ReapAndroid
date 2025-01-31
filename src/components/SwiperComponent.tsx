@@ -1,8 +1,5 @@
 import React, { useState } from 'react';
 import { useSwipeable } from 'react-swipeable';
-import styles from '../styles/ProductCard.module.css';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faArrowLeft, faArrowRight } from '@fortawesome/free-solid-svg-icons';
 
 interface SwiperComponentProps {
   recommendations: any[];
@@ -18,6 +15,7 @@ const SwiperComponent: React.FC<SwiperComponentProps> = ({
   isLoading,
 }) => {
   const validRecommendations = recommendations.filter(deal => deal.logoAbsoluteUrl);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   const { ref: swipeRef } = useSwipeable({
     onSwipedLeft: () => {
@@ -28,154 +26,170 @@ const SwiperComponent: React.FC<SwiperComponentProps> = ({
       const newIndex = Math.max(currentDealIndex - 1, 0);
       setCurrentDealIndex(newIndex);
     },
-    onSwiping: (eventData) => {
-      eventData.event.preventDefault();
-    },
     trackMouse: true,
   });
 
   const currentDeal = validRecommendations[currentDealIndex];
 
-  const [imageLoaded, setImageLoaded] = useState(false);
-
-  const handleImageLoad = () => {
-    setImageLoaded(true);
-  };
-
+  const handleImageLoad = () => setImageLoaded(true);
   const handleImageError = () => {
     setImageLoaded(false);
-    console.error(`Error loading image: ${currentDeal?.logoAbsoluteUrl}`);
-
     if (currentDealIndex < validRecommendations.length - 1) {
       setCurrentDealIndex(currentDealIndex + 1);
+    }
+  };
+
+  const parseCodes = () => {
+    try {
+      const codes = JSON.parse(currentDeal?.codes || '[]');
+      return Array.isArray(codes) ? codes : [];
+    } catch (e) {
+      console.error('Error parsing codes:', e);
+      return [];
     }
   };
 
   return (
     <div style={{ marginTop: '0rem' }} ref={swipeRef}>
       {isLoading ? (
-        <div style={{ textAlign: 'center', padding: '1rem' }}>Loading deals...</div>
+        <div style={{ textAlign: 'center', padding: '1rem' }}>
+          Loading deals...
+        </div>
       ) : (
-        <div
-          style={{
-            width: '100%',
-            height: '400px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
+        <div style={{ 
+          width: '100%', 
+          minHeight: '426px',  // Changed to minHeight
+          display: 'flex', 
+          justifyContent: 'center',
+          padding: '16px 0'
+        }}>
           {validRecommendations.length > 0 ? (
             currentDeal && (
-              <div key={currentDeal.dealId} className={styles.productCard}>
-                <div
-                  style={{
-                    position: 'relative',
-                    width: '350px',
-                    height: '250px',
-                    backgroundColor: '#ffffff',
-                    borderRadius: '1px',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                  }}
-                >
+              <div key={currentDeal.dealId} style={{ 
+                width: 360, 
+                minHeight: 426,  // Changed to minHeight
+                position: 'relative',
+                backgroundColor: '#F7F7F7',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.1)',
+                display: 'flex',
+                flexDirection: 'column'  // Added for better content flow
+              }}>
+                {/* Image Section with Flexible Height */}
+                <div style={{ 
+                  position: 'relative',
+                  width: '100%',
+                  flex: '1 1 60%',  // Flexible height
+                  minHeight: '250px',
+                  background: 'linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(72, 72, 72, 0.75) 54%, #010101 92%)'
+                }}>
+                  {/* Merchant Logo */}
                   <img
                     src={currentDeal.logoAbsoluteUrl}
                     alt={currentDeal.merchantName}
-                    style={{ display: 'none' }}
+                    style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      maxWidth: '80%',
+                      maxHeight: '80%',
+                      objectFit: 'contain',
+                      display: imageLoaded ? 'block' : 'none'
+                    }}
                     onLoad={handleImageLoad}
                     onError={handleImageError}
                   />
-                  {imageLoaded && (
-                    <img
-                      src={currentDeal.logoAbsoluteUrl}
-                      alt={currentDeal.merchantName}
-                      style={{
-                        maxWidth: '100%',
-                        maxHeight: '100%',
-                        objectFit: 'contain',
-                      }}
-                    />
-                  )}
+
+                  {/* Image Loading State */}
                   {!imageLoaded && (
-                    <div style={{ textAlign: 'center' }}>Image not available</div>
+                    <div style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      color: 'white',
+                      textAlign: 'center',
+                      fontSize: '14px'
+                    }}>
+                      Loading merchant logo...
+                    </div>
                   )}
                 </div>
-                <div
-                  style={{
-                    fontSize: '1.15rem',
-                    lineHeight: '1.2',
-                    marginTop: '0.5rem',
-                    textAlign: 'center',
-                  }}
-                >
-                  <div>{currentDeal.merchantName}</div>
-                  {currentDeal.codes &&
-                    (() => {
-                      try {
-                        const codes = JSON.parse(currentDeal.codes);
-                        if (Array.isArray(codes) && codes.length > 0) {
-                          return (
-                            <>
-                              <div>Code: {codes[0].code}</div>
-                              <div>{codes[0].summary}</div>
-                            </>
-                          );
-                        }
-                      } catch (e) {
-                        console.error('Error parsing codes:', e);
-                      }
-                      return null;
-                    })()}
+
+                {/* Content Section with Auto Height */}
+                <div style={{ 
+                  padding: '16px',
+                  background: '#010101',
+                  flex: '0 0 auto',  // Auto height
+                  minHeight: '176px'
+                }}>
+                  {/* Merchant Info */}
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ 
+                      fontSize: '20px',
+                      fontFamily: 'Montserrat, sans-serif',
+                      fontWeight: 600,
+                      color: '#FFFFFF',
+                      marginBottom: '8px',
+                      lineHeight: '1.2'
+                    }}>
+                      {currentDeal.merchantName}
+                    </div>
+                    {currentDeal.dealValue && (
+                      <div style={{
+                        fontSize: '18px',  // Reduced font size
+                        fontFamily: 'Sora, sans-serif',
+                        fontWeight: 600,
+                        color: '#D45B2D'
+                      }}>
+                        ${currentDeal.dealValue}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Deal Codes with Improved Wrapping */}
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: '8px', 
+                    flexWrap: 'wrap',
+                    marginTop: '8px'
+                  }}>
+                    {parseCodes().map((code: any, index: number) => (
+                      <div 
+                        key={index}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #D45B2D',
+                          background: 'rgba(212, 91, 45, 0.1)',
+                          fontSize: '12px',
+                          fontFamily: 'Sora, sans-serif',
+                          fontWeight: 500,
+                          color: '#D45B2D',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          maxWidth: '100%'
+                        }}
+                      >
+                        {code.summary || code.code}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )
           ) : (
-            <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-              Please reload to see deals.
+            <div style={{ 
+              textAlign: 'center', 
+              marginTop: '1rem',
+              color: '#666',
+              fontSize: '16px'
+            }}>
+              No deals available at the moment
             </div>
-          )}
-
-          {currentDealIndex >= validRecommendations.length - 1 && validRecommendations.length > 0 && (
-            <div style={{ textAlign: 'center', marginTop: '1rem' }}>No more deals to display.</div>
-          )}
-
-           {/* Arrow Button Container */}
-           {!isLoading && validRecommendations.length > 0 && (
-            <div className={styles.arrowButtonContainer}>
-              {/* Left Arrow Button */}
-              <button
-                className={styles.arrowButton}
-                onClick={() => {
-                  const newIndex = Math.max(currentDealIndex - 1, 0);
-                  setCurrentDealIndex(newIndex);
-                }}
-              >
-                <FontAwesomeIcon 
-                  icon={faArrowLeft} 
-                  size="3x" 
-                  style={{ color: "#f05e23" }} // Your hex color 
-                />
-              </button>
-
-              {/* Right Arrow Button */}
-              <button
-                className={styles.arrowButton}
-                onClick={() => {
-                  const newIndex = Math.min(currentDealIndex + 1, validRecommendations.length - 1);
-                  setCurrentDealIndex(newIndex);
-                }}
-              >
-                <FontAwesomeIcon 
-                  icon={faArrowRight} 
-                  size="3x" 
-                  style={{ color: "#f05e23" }} // Your hex color
-                />
-              </button>
-            </div>
-          
           )}
         </div>
       )}
